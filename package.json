@@ -10,7 +10,7 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "node --watch --experimental-specifier-resolution=node dist/server/_core/index.js",
     "dev:client": "vite",
-    "build": "vite build && tsc -p tsconfig.server.json",
+    "build": "npm install --include=dev && vite build && tsc -p tsconfig.server.json",
     "start": "node dist/server/_core/index.js",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc --noEmit"
