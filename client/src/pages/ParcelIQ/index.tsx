@@ -91,6 +91,59 @@ const formatAsOf = (value: string | null | undefined) => {
   return value;
 };
 
+/** Plain-English summary of how fair market value was derived. */
+function fairMarketExplainer(
+  v: Record<string, any> | undefined,
+  prc: Record<string, any> | undefined,
+  assessed: number,
+): string {
+  if (!v?.fair_market_value) {
+    return "We don't have enough sales and market data to produce a fair market estimate for this parcel.";
+  }
+
+  const zipLabel = v.zip_equity?.zip_name ?? v.zip_equity?.zip_code ?? "this area";
+  const ratioPct =
+    v.zip_equity?.median_ratio != null
+      ? (Number(v.zip_equity.median_ratio) * 100).toFixed(1)
+      : null;
+
+  const countyPhrase = prc
+    ? `the county's live appraised value of ${fmt(assessed)} (from Spatialest PRC)`
+    : `the county's assessed value of ${fmt(assessed)}`;
+
+  if (v.primary_method === "zillow_adjusted" && ratioPct) {
+    return (
+      `Here's how we got this number in plain English: We started with ${countyPhrase}. ` +
+      `Then we looked at recent home sales in ${zipLabel} and found that county assessments in that area are typically only about ${ratioPct}% of what homes actually sell for — so the tax value usually lags the real market. ` +
+      `We adjusted for that gap, then added Asheville-area price growth since the county's last broad revaluation (using Zillow's metro home-value trend). ` +
+      `The result is our estimate of what this property would likely sell for today — not necessarily the number on the tax bill.`
+    );
+  }
+
+  if (v.primary_method === "deed_ratio" && ratioPct) {
+    return (
+      `Here's how we got this number in plain English: We started with ${countyPhrase}. ` +
+      `Recent qualified sales in ${zipLabel} show that county assessments run at about ${ratioPct}% of real sale prices on average. ` +
+      `We divided this property's assessment by that ${ratioPct}% — in other words, if this home is taxed like its neighbors, what would it probably sell for? ` +
+      `That gives our fair market value estimate. We did not add a separate Zillow adjustment because the county record already reflects a recent appraisal update.`
+    );
+  }
+
+  if (ratioPct) {
+    return (
+      `Here's how we got this number in plain English: We compared ${countyPhrase} to the pattern of actual home sales in ${zipLabel}, ` +
+      `where assessments have averaged about ${ratioPct}% of sale prices. ` +
+      `Scaling this property up by that same local ratio produces our fair market value estimate.`
+    );
+  }
+
+  return (
+    `Here's how we got this number in plain English: With limited sales data for this parcel, we used property characteristics ` +
+    `(size, location, class) and Buncombe County market benchmarks to estimate what it would likely sell for today. ` +
+    `This is a model-based estimate — treat it as directional, not an appraisal.`
+  );
+}
+
 function VarianceBadge({ pct }: { pct: number | null }) {
   if (pct == null) return <Badge variant="outline">—</Badge>;
   const abs = Math.abs(pct);
@@ -769,6 +822,18 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           )}
         </div>
       </div>
+
+      {/* Fair market value — plain English */}
+      {fairValue != null && (
+        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">
+            What is fair market value?
+          </p>
+          <p className="text-sm text-slate-700 leading-relaxed">
+            {fairMarketExplainer(v, prc, assessed)}
+          </p>
+        </div>
+      )}
 
       {/* Derivation steps */}
       {v?.steps?.length > 0 && (
