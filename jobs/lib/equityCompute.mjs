@@ -110,10 +110,10 @@ export async function updateParcelModelValues(pool) {
   console.log("\n🧠 Updating deed-ratio model values for all parcels...");
   const { rowCount } = await pool.query(`
     UPDATE parceliq_parcels p
-    SET model_value = ROUND(p.total_value::FLOAT / NULLIF(e.median_ratio, 0)),
+    SET model_value = ROUND((p.total_value::NUMERIC / NULLIF(e.median_ratio, 0)))::INTEGER,
         variance_pct = ROUND(
-          ((p.total_value::FLOAT - (p.total_value::FLOAT / NULLIF(e.median_ratio, 0)))
-            / NULLIF((p.total_value::FLOAT / NULLIF(e.median_ratio, 0)), 0)) * 100, 1)
+          ((p.total_value::NUMERIC - (p.total_value::NUMERIC / NULLIF(e.median_ratio, 0)))
+            / NULLIF((p.total_value::NUMERIC / NULLIF(e.median_ratio, 0)), 0)) * 100, 1)
     FROM parceliq_zip_equity e
     WHERE p.postal_code = e.zip_code AND p.total_value > 0 AND e.median_ratio > 0
   `);

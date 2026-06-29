@@ -80,6 +80,11 @@ const fmtDate = (d: unknown) => {
 const fmtCell = (v: unknown) =>
   v instanceof Date ? fmtDate(v) : v == null ? "—" : String(v);
 
+const normalizePin = (pin: string) => pin.replace(/-/g, "").trim().toUpperCase();
+
+const pinsMatch = (a: string | null | undefined, b: string | null | undefined) =>
+  !!a && !!b && normalizePin(a) === normalizePin(b);
+
 function VarianceBadge({ pct }: { pct: number | null }) {
   if (pct == null) return <Badge variant="outline">—</Badge>;
   const abs = Math.abs(pct);
@@ -372,6 +377,11 @@ function ExplorerTab() {
     setDetailAddress(null);
   };
 
+  const runSearch = () => {
+    closeDetail();
+    setSearch(q);
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -388,7 +398,7 @@ function ExplorerTab() {
             placeholder="Search address or owner name…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && setSearch(q)}
+            onKeyDown={(e) => e.key === "Enter" && runSearch()}
           />
         </div>
         <Select value={classCd} onValueChange={setCls}>
@@ -403,7 +413,7 @@ function ExplorerTab() {
             <SelectItem value="I">Industrial</SelectItem>
           </SelectContent>
         </Select>
-        <Button onClick={() => setSearch(q)} disabled={isFetching}>
+        <Button onClick={runSearch} disabled={isFetching}>
           {isFetching ? "Searching…" : "Search"}
         </Button>
       </div>
@@ -484,7 +494,7 @@ function ExplorerTab() {
             </Button>
           </CardHeader>
           <CardContent className="px-4 pb-6">
-            <ParcelDetailFetcher pin={detailPin} />
+            <ParcelDetailFetcher key={detailPin} pin={detailPin} />
           </CardContent>
         </Card>
         </div>
@@ -497,16 +507,18 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
   const { data, isLoading, isError, error, isFetching } =
     trpc.parceliq.getParcel.useQuery({ pin }, { retry: 1 });
 
-  if (isLoading || (isFetching && !data)) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">Loading valuation detail…</p>;
-  }
-  if (isError) {
+  const dataMatchesPin = data ? pinsMatch(data.PIN, pin) : false;
+
+  if (isError && !isFetching) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
         <p className="font-semibold">Could not load property detail</p>
         <p className="mt-1">{error.message}</p>
       </div>
     );
+  }
+  if (isLoading || isFetching || !dataMatchesPin) {
+    return <p className="text-sm text-muted-foreground py-8 text-center">Loading valuation detail…</p>;
   }
   if (!data) {
     return <p className="text-sm text-muted-foreground py-8 text-center">No detail returned for this parcel.</p>;
