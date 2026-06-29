@@ -70,6 +70,16 @@ const fmtB = (n: number) =>
   : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M`
   : `$${Math.round(n).toLocaleString()}`;
 
+const fmtDate = (d: unknown) => {
+  if (d == null || d === "") return "—";
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  if (typeof d === "string") return d.slice(0, 10);
+  return String(d);
+};
+
+const fmtCell = (v: unknown) =>
+  v instanceof Date ? fmtDate(v) : v == null ? "—" : String(v);
+
 function VarianceBadge({ pct }: { pct: number | null }) {
   if (pct == null) return <Badge variant="outline">—</Badge>;
   const abs = Math.abs(pct);
@@ -462,7 +472,8 @@ function ExplorerTab() {
       </Card>
 
       {detailPin && (
-        <Card ref={detailRef} className="border-2 border-slate-800 shadow-lg scroll-mt-4">
+        <div ref={detailRef} className="scroll-mt-4">
+        <Card className="border-2 border-slate-800 shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between py-4 px-4">
             <div>
               <CardTitle className="text-lg font-serif">{detailAddress}</CardTitle>
@@ -476,6 +487,7 @@ function ExplorerTab() {
             <ParcelDetailFetcher pin={detailPin} />
           </CardContent>
         </Card>
+        </div>
       )}
     </div>
   );
@@ -530,7 +542,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         ].map(([label, value]) => (
           <div key={label} className="bg-neutral-50 rounded p-3">
             <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-            <div className="font-medium mt-0.5 truncate">{value ?? "—"}</div>
+            <div className="font-medium mt-0.5 truncate">{fmtCell(value)}</div>
           </div>
         ))}
       </div>
@@ -626,14 +638,14 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
               <div className="font-medium">
                 ${Number(v.zillow.zhvi_base ?? 0).toLocaleString()} → ${Number(v.zillow.zhvi_current ?? 0).toLocaleString()}
               </div>
-              <div className="text-[11px] text-muted-foreground">Base: {v.zillow.zhvi_base_date ?? "2021"}</div>
+              <div className="text-[11px] text-muted-foreground">Base: {fmtDate(v.zillow.zhvi_base_date) || "2021"}</div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Median sale price</div>
               <div className="font-medium">
                 ${Number(v.zillow.median_sale_base ?? 0).toLocaleString()} → ${Number(v.zillow.median_sale_current ?? 0).toLocaleString()}
               </div>
-              <div className="text-[11px] text-muted-foreground">As of {v.zillow.as_of_date ?? "—"}</div>
+              <div className="text-[11px] text-muted-foreground">As of {fmtDate(v.zillow.as_of_date)}</div>
             </div>
             <div className="col-span-2">
               <div className="text-xs text-muted-foreground">Blended appreciation factor applied</div>
@@ -698,7 +710,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
                   : null;
                 return (
                   <TableRow key={i}>
-                    <TableCell className="text-sm">{sale.sell_date ?? "—"}</TableCell>
+                    <TableCell className="text-sm">{fmtDate(sale.sell_date)}</TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {fmt(sale.selling_price)}
                     </TableCell>
