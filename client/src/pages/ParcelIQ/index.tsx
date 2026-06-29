@@ -327,7 +327,7 @@ function DashboardTab() {
             <TableBody>
               {[
                 { name: "Buncombe County ArcGIS",    sub: "arcgis.ashevillenc.gov",     type: "ArcGIS REST",   status: "Connected",    refresh: "Daily 6am" },
-                { name: "Spatialest PRC System",     sub: "prc-buncombe.spatialest.com", type: "Vendor",        status: "Auth Required", refresh: "Real-time" },
+                { name: "Spatialest PRC System",     sub: "prc-buncombe.spatialest.com", type: "Vendor",        status: "Connected",    refresh: "Live on View" },
                 { name: "NC Register of Deeds",       sub: "Sale comps / deed stamps",   type: "Public Records", status: "Available",   refresh: "Weekly" },
                 { name: "US Census ACS",              sub: "Demographics layer",          type: "Public API",    status: "Available",    refresh: "Annual" },
               ].map((s) => (
@@ -524,7 +524,7 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
     );
   }
   if (isLoading || isFetching || !dataMatchesPin) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">Loading valuation detail…</p>;
+    return <p className="text-sm text-muted-foreground py-8 text-center">Loading valuation detail… fetching live Spatialest PRC when available.</p>;
   }
   if (!data) {
     return <p className="text-sm text-muted-foreground py-8 text-center">No detail returned for this parcel.</p>;
@@ -535,8 +535,10 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
 function ParcelDetailBody({ data }: { data: Record<string, any> }) {
   const v = data.valuation as Record<string, any> | undefined;
   const freshness = data.data_freshness as Record<string, any> | undefined;
+  const prc = (v?.prc ?? data.prc) as Record<string, any> | undefined;
+  const taxRoll = v?.tax_roll_assessment ?? data.TOTALVALUE;
   const fairValue = v?.fair_market_value ?? data.model_value;
-  const assessed = v?.county_assessment ?? data.TOTALVALUE;
+  const assessed = v?.county_assessment ?? v?.prc_assessment ?? data.TOTALVALUE;
   const varPct = v?.variance_pct ?? data.variance_pct;
   const verdict = v?.verdict as string | undefined;
 
@@ -558,7 +560,9 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
             <div>
               <div className="font-semibold text-slate-800">Data sources &amp; freshness</div>
               <p className="text-xs text-muted-foreground mt-1">
-                ParcelIQ estimates use bulk imports — not live Spatialest PRC data.
+                {freshness.prc_connected
+                  ? "Live Spatialest PRC data is incorporated into this analysis."
+                  : "Bulk tax roll data — live PRC fetch unavailable for this parcel."}
               </p>
             </div>
             {freshness.prc_url && (
@@ -574,7 +578,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
             {[
-              ["County assessment", formatAsOf(freshness.assessment_as_of), freshness.assessment_source],
+              ["County assessment", formatAsOf(freshness.prc_as_of ?? freshness.assessment_as_of), freshness.assessment_source],
               ["Register of Deeds sales", formatAsOf(freshness.sales_data_as_of), "Qualified sales sync"],
               ["ZIP equity ratios", formatAsOf(freshness.zip_equity_as_of), "Deed-ratio by ZIP"],
               ["Zillow metro index", formatAsOf(freshness.zillow_as_of), "Appreciation factor"],
@@ -633,6 +637,84 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         ))}
       </div>
 
+      {/* Spatialest PRC — live county record */}
+      {prc && (
+        <Card className="border-2 border-blue-300 bg-blue-50/30">
+          <CardHeader className="py-3 px-4 pb-1">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-blue-800" />
+              Buncombe Spatialest PRC · Official County Record
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-4">
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div className="rounded border bg-white p-3 text-center">
+                <div className="text-xs text-muted-foreground">Land</div>
+                <div className="font-serif font-semibold mt-1">{fmt(prc.land_value)}</div>
+              </div>
+              <div className="rounded border bg-white p-3 text-center">
+                <div className="text-xs text-muted-foreground">Building</div>
+                <div className="font-serif font-semibold mt-1">{fmt(prc.building_value)}</div>
+              </div>
+              <div className="rounded border-2 border-blue-400 bg-white p-3 text-center">
+                <div className="text-xs text-blue-800 font-medium">Total Appraised</div>
+                <div className="font-serif font-semibold mt-1 text-lg">{fmt(prc.total_appraised)}</div>
+                {prc.latest_value_year && (
+                  <div className="text-[10px] text-muted-foreground mt-1">{prc.latest_value_year} tax year</div>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {[
+                ["Zoning", prc.zoning],
+                ["Land use", prc.land_use],
+                ["Neighborhood", prc.neighborhood],
+                ["Deed date", prc.deed_date ? fmtDate(prc.deed_date) : "—"],
+                ["Year built", prc.building?.year_built ?? "—"],
+                ["Living area", prc.building?.sqft ? `${Number(prc.building.sqft).toLocaleString()} sqft` : "—"],
+                ["Beds / baths", prc.building?.bedrooms
+                  ? `${prc.building.bedrooms} bed · ${prc.building.full_bath ?? 0}${prc.building.half_bath ? `/${prc.building.half_bath}` : ""} bath`
+                  : "—"],
+                ["Style", prc.building?.building_type ?? "—"],
+              ].map(([label, value]) => (
+                <div key={label} className="bg-white rounded border px-2 py-1.5">
+                  <div className="text-muted-foreground">{label}</div>
+                  <div className="font-medium truncate">{fmtCell(value)}</div>
+                </div>
+              ))}
+            </div>
+            {v?.tax_roll_assessment != null && v.tax_roll_assessment !== prc.total_appraised && (
+              <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                Bulk tax roll snapshot: {fmt(v.tax_roll_assessment)} — superseded by live PRC {fmt(prc.total_appraised)} in this analysis.
+              </p>
+            )}
+            {prc.value_history?.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Value change history</p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Event</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {prc.value_history.slice(-4).map((h: Record<string, any>, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell className="text-xs">{fmtDate(h.date)}</TableCell>
+                        <TableCell className="text-xs">{h.description}</TableCell>
+                        <TableCell className="text-right font-mono text-xs">{fmt(h.total_value)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Verdict */}
       {v?.verdict_label && (
         <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
@@ -655,7 +737,12 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         <div className="rounded border p-3 text-center">
           <div className="text-xs text-muted-foreground">County Assessment</div>
           <div className="text-xl font-serif font-semibold mt-1">{fmt(assessed)}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">Tax roll snapshot</div>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            {prc ? "Spatialest PRC (live)" : "Tax roll snapshot"}
+          </div>
+          {prc && taxRoll != null && taxRoll !== assessed && (
+            <div className="text-[10px] text-amber-700 mt-0.5">Roll: {fmt(taxRoll)}</div>
+          )}
         </div>
         <div className="rounded border-2 border-slate-800 p-3 text-center bg-slate-50">
           <div className="text-xs text-slate-600 font-medium">Fair Market Value</div>
@@ -665,7 +752,9 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
               ? "Deed ratio + Zillow"
               : v?.primary_method === "deed_ratio"
                 ? "Deed ratio model"
-                : "ParcelIQ model"}
+                : v?.primary_method === "prc_current"
+                  ? "PRC + deed ratio"
+                  : "ParcelIQ model"}
           </div>
         </div>
         <div className={`rounded border p-3 text-center ${Math.abs(varPct ?? 0) > 15 ? "bg-red-50" : "bg-green-50"}`}>

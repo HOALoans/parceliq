@@ -8,6 +8,7 @@ import {
 } from "./valuation.js";
 import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type MarketIndexRow } from "./valuationDetail.js";
 import { buildDataFreshness } from "./assessmentFreshness.js";
+import { loadPrcForParcel } from "./spatialestPrc.js";
 
 function toDateLabel(value: unknown): string | null {
   if (value == null) return null;
@@ -130,6 +131,9 @@ export const parceliqRouter = router({
       }
       if (!rows.length) throw new Error(`Parcel ${pin} not found`);
       const row = rows[0];
+
+      const prc = await loadPrcForParcel(pool, String(row.pin), row).catch(() => null);
+
       const enriched = enrichRow(row);
       const attrs: ParcelAttrs = {
         CALCACREAGE: enriched.CALCACREAGE, LANDVALUE: null,
@@ -191,6 +195,7 @@ export const parceliqRouter = router({
             }
           : null,
         sales,
+        prc,
       );
 
       const zipEquityUpdated = zipEquityRes.rows[0]?.updated_at;
@@ -201,6 +206,7 @@ export const parceliqRouter = router({
         salesDataAsOf: toDateLabel(rodSyncAt),
         zipEquityAsOf: toDateLabel(zipEquityUpdated),
         zillowAsOf: toDateLabel(zillowAsOf),
+        prc,
       });
 
       return {

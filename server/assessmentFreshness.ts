@@ -1,4 +1,6 @@
 import type { ComparableSale } from "./valuationDetail.js";
+import type { PrcRecord } from "./spatialestPrc.js";
+import { spatialestPrcUrl } from "./spatialestPrc.js";
 
 export type FreshnessWarning = {
   code: string;
@@ -10,6 +12,8 @@ export type FreshnessWarning = {
 export type DataFreshness = {
   assessment_source: string;
   assessment_as_of: string | null;
+  prc_as_of: string | null;
+  prc_connected: boolean;
   deed_date: string | null;
   levy_year: number | null;
   sales_data_as_of: string | null;
@@ -18,14 +22,6 @@ export type DataFreshness = {
   prc_url: string;
   warnings: FreshnessWarning[];
 };
-
-function normalizePin(pin: string) {
-  return pin.replace(/-/g, "").trim();
-}
-
-export function spatialestPrcUrl(pin: string) {
-  return `https://prc-buncombe.spatialest.com/#/property/${normalizePin(pin)}`;
-}
 
 function toIsoDate(value: unknown): string | null {
   if (value == null) return null;
@@ -51,10 +47,14 @@ export function buildDataFreshness(
     salesDataAsOf?: string | null;
     zipEquityAsOf?: string | null;
     zillowAsOf?: string | null;
+    prc?: PrcRecord | null;
   } = {},
 ): DataFreshness {
-  const assessed = Number(row.total_value ?? 0);
-  const deedDate = toIsoDate(row.deed_date);
+  const taxRollAssessed = Number(row.total_value ?? 0);
+  const prc = opts.prc ?? null;
+  const prcAssessed = prc?.total_appraised && prc.total_appraised > 0 ? prc.total_appraised : null;
+  const assessed = prcAssessed ?? taxRollAssessed;
+  const deedDate = toIsoDate(prc?.deed_date ?? row.deed_date);
   const levyYear = row.levy_year != null ? Number(row.levy_year) : null;
   const parcelUpdated = toIsoDate(row.updated_at);
   const currentYear = new Date().getFullYear();
@@ -62,12 +62,21 @@ export function buildDataFreshness(
   const warnings: FreshnessWarning[] = [];
   const latestSale = sales[0];
 
-  if (deedDate && yearsAgo(deedDate, 3)) {
+  if (prcAssessed && taxRollAssessed > 0 && Math.abs(prcAssessed - taxRollAssessed) > taxRollAssessed * 0.05) {
+    warnings.push({
+      code: "tax_roll_prc_mismatch",
+      severity: "warning",
+      title: "Tax roll updated via live Spatialest PRC",
+      detail: `Our bulk tax roll had $${taxRollAssessed.toLocaleString()}, but the live county PRC shows $${prcAssessed.toLocaleString()}. This analysis now uses the official PRC appraised value.`,
+    });
+  }
+
+  if (!prc && deedDate && yearsAgo(deedDate, 3)) {
     warnings.push({
       code: "recent_deed",
       severity: "warning",
       title: "Recent deed on file",
-      detail: `A deed was recorded ${deedDate}. Buncombe may have updated the appraised value on Spatialest PRC since our tax-roll snapshot. The county assessment shown here ($${assessed.toLocaleString()}) may be lower than the live PRC value.`,
+      detail: `A deed was recorded ${deedDate}. The county may have updated the appraised value on Spatialest PRC since our tax-roll snapshot ($${taxRollAssessed.toLocaleString()}).`,
     });
   }
 
@@ -78,33 +87,36 @@ export function buildDataFreshness(
         code: "land_sale_before_improvement",
         severity: "warning",
         title: "Recorded sale likely predates current improvements",
-        detail: `The most recent qualified sale was $${latestSale.selling_price.toLocaleString()}${latestSale.sell_date ? ` (${toIsoDate(latestSale.sell_date) ?? latestSale.sell_date})` : ""}, but our county assessment is $${assessed.toLocaleString()} (${saleToAssessed.toFixed(1)}× the sale price). This often means the lot sold before a new home was built — the sale is not a reliable comp for today's value.`,
+        detail: `The most recent qualified sale was $${latestSale.selling_price.toLocaleString()}${latestSale.sell_date ? ` (${toIsoDate(latestSale.sell_date) ?? latestSale.sell_date})` : ""}. That land sale is not a reliable comp for the current improved property.`,
       });
     }
   }
 
-  if (levyYear != null && levyYear < currentYear - 1) {
+  if (!prc && levyYear != null && levyYear < currentYear - 1) {
     warnings.push({
       code: "stale_levy_year",
       severity: "info",
       title: "Tax roll may not reflect the current levy year",
-      detail: `Our bulk data is tied to levy year ${levyYear}. The county PRC may show a more recent appraised value for the current tax year.`,
+      detail: `Our bulk data is tied to levy year ${levyYear}. Connect to Spatialest PRC for the current appraised value.`,
     });
   }
 
-  if (warnings.length > 0) {
+  if (!prc && warnings.length > 0) {
     warnings.push({
       code: "verify_prc",
       severity: "info",
-      title: "Compare with official county records",
-      detail:
-        "ParcelIQ uses a downloaded tax roll plus statistical models. For the authoritative appraised value (land + building breakdown), open this parcel on Buncombe's Spatialest Property Record Card.",
+      title: "PRC data unavailable",
+      detail: "Could not load live Spatialest data for this parcel. Values may rely on the bulk tax roll only.",
     });
   }
 
   return {
-    assessment_source: "Buncombe County tax roll (bulk CSV import)",
+    assessment_source: prc
+      ? "Spatialest PRC (live) + tax roll snapshot"
+      : "Buncombe County tax roll (bulk CSV import)",
     assessment_as_of: parcelUpdated ?? (levyYear ? `${levyYear} levy year` : null),
+    prc_as_of: prc ? toIsoDate(prc.fetched_at) : null,
+    prc_connected: !!prc,
     deed_date: deedDate,
     levy_year: levyYear,
     sales_data_as_of: opts.salesDataAsOf ?? null,
