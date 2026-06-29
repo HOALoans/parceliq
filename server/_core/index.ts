@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import * as trpcExpress from "@trpc/server/adapters/express";
@@ -29,23 +30,23 @@ app.use(
   trpcExpress.createExpressMiddleware({ router: appRouter, createContext })
 );
 
-// Serve Vite build in production
-const isProd = process.env.NODE_ENV === "production";
-if (isProd) {
-  const clientDist = path.resolve(__dirname, "../../client");
+// Serve Vite build (dist/client) on the same port as the API
+const clientDist = path.resolve(__dirname, "../../client");
+if (fs.existsSync(path.join(clientDist, "index.html"))) {
   app.use(express.static(clientDist, {
     setHeaders(res, filePath) {
       if (filePath.endsWith("index.html")) {
         res.setHeader("Cache-Control", "no-store");
       } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.setHeader("Cache-Control", "public, max-age=3600");
       }
     },
   }));
-  // SPA fallback
-  app.get("*", (_req, res) => {
+  app.get(/^(?!\/api).*/, (_req, res) => {
     res.sendFile(path.join(clientDist, "index.html"));
   });
+} else {
+  console.warn(`⚠️  Client build missing at ${clientDist} — run "npm run build" or use Vite on :5173`);
 }
 
 const PORT = Number(process.env.PORT) || 10000;

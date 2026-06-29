@@ -150,9 +150,13 @@ export default function ParcelIQPage() {
 // ════════════════════════════════════════════════════════════════════════
 function DashboardTab() {
   const { data, isLoading, refetch } = trpc.parceliq.searchParcels.useQuery({ limit: 5 });
+  const { data: ratios } = trpc.parceliq.assessmentRatios.useQuery();
+
+  const countyPct = ratios?.countyMedianPct ?? COUNTY_ASSESSMENT_RATIO * 100;
+  const zipRatios = ratios?.zipCodes ?? ASSESSMENT_RATIO_BY_ZIP;
 
   const stats = [
-    { label: "Assessment Ratio",   value: "72.5%",    sub: "Of market value (county-wide)", color: "border-t-amber-500" },
+    { label: "Assessment Ratio",   value: `${countyPct.toFixed(1)}%`, sub: "Of market value (county-wide)", color: "border-t-amber-500" },
     { label: "Total Parcels",      value: "112,847",  sub: "Buncombe County",               color: "border-t-slate-500" },
     { label: "Total Assessed",     value: "$24.3B",   sub: "Model-derived",                  color: "border-t-green-500" },
     { label: "Equity Flags",       value: "4,219",    sub: "Properties ±15% off",            color: "border-t-red-500" },
@@ -171,7 +175,7 @@ function DashboardTab() {
         <CardContent className="space-y-4 px-4 pb-4">
           <p className="text-sm text-amber-950 leading-relaxed">
             Buncombe County assesses at only{" "}
-            <strong className="text-lg">{(COUNTY_ASSESSMENT_RATIO * 100).toFixed(1)}%</strong>{" "}
+            <strong className="text-lg">{countyPct.toFixed(1)}%</strong>{" "}
             of actual market value — confirming exactly what the{" "}
             <strong>Mountain Xpress</strong> article reported (they said 67–73%).
             Assessed values across the county systematically lag market prices.
@@ -187,7 +191,7 @@ function DashboardTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ASSESSMENT_RATIO_BY_ZIP.map((z) => (
+              {zipRatios.map((z) => (
                 <TableRow key={z.zip} className="bg-white/60">
                   <TableCell className="font-mono text-xs font-semibold">{z.zip}</TableCell>
                   <TableCell className="text-sm">{z.area}</TableCell>
@@ -207,7 +211,7 @@ function DashboardTab() {
           <div className="h-48 rounded-lg border bg-white p-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={ASSESSMENT_RATIO_BY_ZIP.map((z) => ({
+                data={zipRatios.map((z) => ({
                   name: z.zip,
                   ratio: Math.round(z.ratio * 1000) / 10,
                 }))}

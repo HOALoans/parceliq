@@ -273,6 +273,44 @@ export const parceliqRouter = router({
       return { events: rows };
     }),
 
+  assessmentRatios: publicProcedure.query(async () => {
+    const fallback = [
+      { zip: "28801", area: "Downtown Asheville", ratio: 0.749 },
+      { zip: "28803", area: "Biltmore/South",     ratio: 0.719 },
+      { zip: "28804", area: "North Asheville",    ratio: 0.723 },
+      { zip: "28805", area: "East Asheville",     ratio: 0.746 },
+      { zip: "28806", area: "West Asheville",     ratio: 0.721 },
+      { zip: "28711", area: "Black Mountain",     ratio: 0.727 },
+    ];
+
+    const { rows } = await pool.query(
+      `SELECT zip_code, zip_name, median_ratio, sample_count
+       FROM parceliq_zip_equity
+       WHERE zip_code IN ('28801','28803','28804','28805','28806','28711')
+       ORDER BY zip_code`
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    const zipCodes = rows.length
+      ? rows.map((row) => ({
+          zip: String(row.zip_code),
+          area: String(row.zip_name ?? row.zip_code),
+          ratio: Number(row.median_ratio),
+          sampleCount: Number(row.sample_count ?? 0),
+        }))
+      : fallback;
+
+    const countyMedianRatio = zipCodes.length
+      ? zipCodes.reduce((sum, z) => sum + z.ratio, 0) / zipCodes.length
+      : 0.725;
+
+    return {
+      countyMedianRatio: +countyMedianRatio.toFixed(3),
+      countyMedianPct: +(countyMedianRatio * 100).toFixed(1),
+      zipCodes,
+      source: rows.length ? "parceliq_zip_equity" : "reference",
+    };
+  }),
+
   listCounties: publicProcedure.query(async () => {
     await ensureTables();
     const { rows } = await pool.query("SELECT * FROM parceliq_counties WHERE active=1 ORDER BY name ASC");

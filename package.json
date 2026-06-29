@@ -7,7 +7,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "vite build && concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "node --watch --experimental-specifier-resolution=node dist/server/_core/index.js",
     "dev:client": "vite",
     "build": "npm install --include=dev && vite build && tsc -p tsconfig.server.json",
