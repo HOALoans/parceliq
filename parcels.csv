@@ -1,0 +1,72 @@
+<!DOCTYPE html><html lang="en"><head><title>ArcGIS Hub</title><meta name="twitter:title" content="ArcGIS Hub"><meta property="og:title" content="ArcGIS Hub"><meta name="description" content="Discover, analyze and download data from ArcGIS Hub. Download in CSV, KML, Zip, GeoJSON, GeoTIFF or PNG. Find API links for GeoServices, WMS, and WFS. Analyze with charts and thematic maps. Take the next step and create StoryMaps and Web Maps."><meta name="twitter:description" content="Discover, analyze and download data from ArcGIS Hub. Download in CSV, KML, Zip, GeoJSON, GeoTIFF or PNG. Find API links for GeoServices, WMS, and WFS. Analyze with charts and thematic maps. Take the next step and create StoryMaps and Web Maps."><meta property="og:description" content="Discover, analyze and download data from ArcGIS Hub. Download in CSV, KML, Zip, GeoJSON, GeoTIFF or PNG. Find API links for GeoServices, WMS, and WFS. Analyze with charts and thematic maps. Take the next step and create StoryMaps and Web Maps."><meta name="twitter:card" content="summary"><meta property="og:url" content="https://data-bunco.opendata.arcgis.com/datasets/bunco::buncombe-county-parcels/downloads/data?format=csv"><meta property="og:type" content="website">
+    <meta name="hub-site-head-content">
+    <meta charset="utf-8">
+    <meta name="google-site-verification" content="V9SzvB895BKr2ff7JVvaJQM1CIgPqOL5FPooX1aqENo">
+    <meta name="msvalidate.01" content="217F0EED65C5B131219477CE2CEAAF8E">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script>
+      (function () {
+        // check for unsupported browsers
+        function isIE () {
+          return (
+            (navigator.appName === 'Microsoft Internet Explorer') ||
+            ((navigator.appName === 'Netscape') && (new RegExp('Trident/.*rv:([0-9]{1,}[.0-9]{0,})').exec(navigator.userAgent) != null))
+          );
+        }
+        function isEdge () {
+          return navigator.userAgent.toLowerCase().includes('edge');
+        }
+        if (isIE() || isEdge()) {
+          window.location.replace('./unsupported.html');
+        }
+      })();
+    </script>
+    
+<meta name="activation-engine/config/environment" content="%7B%22modulePrefix%22%3A%22activation-engine%22%2C%22environment%22%3A%22production%22%2C%22ember-do-forms%22%3A%7B%22defaultClasses%22%3A%7B%22field%22%3A%5B%22field%22%5D%2C%22label%22%3A%5B%22label%22%5D%2C%22control%22%3A%5B%22control%22%5D%2C%22feedback%22%3A%5B%22feedback%22%5D%2C%22hint%22%3A%5B%22hint%22%5D%7D%2C%22validationClasses%22%3A%7B%22fieldSuccess%22%3A%5B%22field-success%22%5D%2C%22fieldError%22%3A%5B%22field-error%22%5D%2C%22controlSuccess%22%3A%5B%22control-success%22%5D%2C%22controlError%22%3A%5B%22control-error%22%5D%7D%7D%7D">
+<meta name="content-library-engine/config/environment" content="%7B%22modulePrefix%22%3A%22content-library-engine%22%2C%22environment%22%3A%22production%22%2C%22ember-do-forms%22%3A%7B%22defaultClasses%22%3A%7B%22field%22%3A%5B%22field%22%5D%2C%22label%22%3A%5B%22label%22%5D%2C%22control%22%3A%5B%22control%22%5D%2C%22feedback%22%3A%5B%22feedback%22%5D%2C%22hint%22%3A%5B%22hint%22%5D%7D%2C%22validationClasses%22%3A%7B%22fieldSuccess%22%3A%5B%22field-success%22%5D%2C%22fieldError%22%3A%5B%22field-error%22%5D%2C%22controlSuccess%22%3A%5B%22control-success%22%5D%2C%22controlError%22%3A%5B%22control-error%22%5D%7D%7D%7D">
+<meta name="events-engine/config/environment" content="%7B%22modulePrefix%22%3A%22events-engine%22%2C%22environment%22%3A%22production%22%2C%22ember-do-forms%22%3A%7B%22defaultClasses%22%3A%7B%22field%22%3A%5B%22field%22%5D%2C%22label%22%3A%5B%22label%22%5D%2C%22control%22%3A%5B%22control%22%5D%2C%22feedback%22%3A%5B%22feedback%22%5D%2C%22hint%22%3A%5B%22hint%22%5D%7D%2C%22validationClasses%22%3A%7B%22fieldSuccess%22%3A%5B%22field-success%22%5D%2C%22fieldError%22%3A%5B%22field-error%22%5D%2C%22controlSuccess%22%3A%5B%22control-success%22%5D%2C%22controlError%22%3A%5B%22control-error%22%5D%7D%7D%7D">
+<meta name="feedback-engine/config/environment" content="%7B%22modulePrefix%22%3A%22feedback-engine%22%2C%22environment%22%3A%22production%22%7D">
+<meta name="layout-editor-engine/config/environment" content="%7B%22modulePrefix%22%3A%22layout-editor-engine%22%2C%22environment%22%3A%22production%22%2C%22ember-do-forms%22%3A%7B%22defaultClasses%22%3A%7B%22field%22%3A%5B%22field%22%5D%2C%22label%22%3A%5B%22label%22%5D%2C%22control%22%3A%5B%22control%22%5D%2C%22feedback%22%3A%5B%22feedback%22%5D%2C%22hint%22%3A%5B%22hint%22%5D%7D%2C%22validationClasses%22%3A%7B%22fieldSuccess%22%3A%5B%22field-success%22%5D%2C%22fieldError%22%3A%5B%22field-error%22%5D%2C%22controlSuccess%22%3A%5B%22control-success%22%5D%2C%22controlError%22%3A%5B%22control-error%22%5D%7D%7D%7D">
+<meta name="solutions-engine/config/environment" content="%7B%22modulePrefix%22%3A%22solutions-engine%22%2C%22environment%22%3A%22production%22%2C%22ember-do-forms%22%3A%7B%22defaultClasses%22%3A%7B%22field%22%3A%5B%22field%22%5D%2C%22label%22%3A%5B%22label%22%5D%2C%22control%22%3A%5B%22control%22%5D%2C%22feedback%22%3A%5B%22feedback%22%5D%2C%22hint%22%3A%5B%22hint%22%5D%7D%2C%22validationClasses%22%3A%7B%22fieldSuccess%22%3A%5B%22field-success%22%5D%2C%22fieldError%22%3A%5B%22field-error%22%5D%2C%22controlSuccess%22%3A%5B%22control-success%22%5D%2C%22controlError%22%3A%5B%22control-error%22%5D%7D%7D%7D">
+    <link rel="stylesheet" href="https://hubcdn.arcgis.com/opendata-ui/assets/assets/vendor-72e0f485290ac0e5d1f83abbe0434f5d.css">
+<link rel="stylesheet" href="https://hubcdn.arcgis.com/opendata-ui/assets/assets/chunk.32143.057ec027fb5b6a64f9b4.css">
+    <!-- [begin custom site css injection point] - please do not remove this -->
+
+    <!-- FOR LTR DEVELOPMENT/TESTING: Un-Comment the next section -->
+    <!-- <link rel="stylesheet" href="/assets/opendata-base.css"> -->
+    <!-- FOR RTL TESTING: Un-Comment the next section -->
+    <!-- <link rel="stylesheet" href="https://hubcdn.arcgis.com/opendata-ui/assets/assets/opendata-rtl-17945ffa54e5287be65739f42d01e2c4.css">
+    <link rel="stylesheet" href="//cdn.rawgit.com/morteza/bootstrap-rtl/v3.3.4/dist/css/bootstrap-rtl.min.css"> -->
+
+    <!-- [end custom site css injection point] - please do not remove this -->
+
+    <script type="module" src="https://hubcdn.arcgis.com/opendata-ui/assets/calcite-components/5.1.1/cdn/index.js"></script>
+<meta name="opendata-ui/config/asset-manifest" content="%7B%22bundles%22%3A%7B%22activation-engine%22%3A%7B%22assets%22%3A%5B%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/activation-engine/assets/engine-755b466a0a23de538503c2a3e9a6c67e.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/activation-engine/config/environment-3a3db2bce22d21a588831c0cf7feb3c7.js%22%2C%22type%22%3A%22js%22%7D%5D%7D%2C%22content-library-engine%22%3A%7B%22assets%22%3A%5B%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/content-library-engine/assets/engine-a7afe410ccf08edd71ecb3c6ac6ada12.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/content-library-engine/assets/engine-vendor-676a9b388fe026735b28383031ae2ae8.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/content-library-engine/config/environment-a82e8d0b7f812bb88f6f29614bd12e2f.js%22%2C%22type%22%3A%22js%22%7D%5D%7D%2C%22events-engine%22%3A%7B%22assets%22%3A%5B%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/events-engine/assets/engine-ac7237e0e231f4ab1db66eaeb71463b8.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/events-engine/assets/engine-vendor-458b2131c0e3527d1bcb093a986e5775.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/events-engine/config/environment-8ab60e9ffb23a5e602ad383ffbadfe60.js%22%2C%22type%22%3A%22js%22%7D%5D%7D%2C%22feedback-engine%22%3A%7B%22assets%22%3A%5B%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/feedback-engine/assets/engine-f7d107f815e2f58e2fa1a3148f67d482.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/feedback-engine/assets/engine-vendor-4fb2bf302b7816305fab31535fb2e32c.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/feedback-engine/config/environment-d36e04fb170c9fce8fc1f0af72f0a0a8.js%22%2C%22type%22%3A%22js%22%7D%5D%7D%2C%22layout-editor-engine%22%3A%7B%22assets%22%3A%5B%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/layout-editor-engine/assets/engine-3c92c763d82b7d5d6216301961afe895.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/layout-editor-engine/assets/engine-vendor-0bc43d1500f429f1636d15e2626b0ce3.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/layout-editor-engine/assets/engine-vendor-188819a7da922d27c286dd640266d1a3.css%22%2C%22type%22%3A%22css%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/layout-editor-engine/config/environment-b61dbd70182cd4ee7d523d670df243b7.js%22%2C%22type%22%3A%22js%22%7D%5D%7D%2C%22solutions-engine%22%3A%7B%22assets%22%3A%5B%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/solutions-engine/assets/engine-8fca23678cab3e6a8c358433a8d51325.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/solutions-engine/assets/engine-vendor-ab685a0c556bb97312a60b2b7968d91b.js%22%2C%22type%22%3A%22js%22%7D%2C%7B%22uri%22%3A%22https%3A//hubcdn.arcgis.com/opendata-ui/assets/engines-dist/solutions-engine/config/environment-9b41821d1a605debe44976e14dd42bd1.js%22%2C%22type%22%3A%22js%22%7D%5D%7D%7D%7D">
+
+    <script id="site-injection">
+      window.__SITE="%7B%22site%22%3Anull%2C%22status%22%3A404%7D"
+    </script>
+    <script id="domain-injection">
+      window.__DOMAIN={"domainInfo":null}
+    </script>    <!-- [ga injection point] - please do not remove this -->
+  </head>
+  <body class="calcite a11y-underlines">
+    
+    <calcite-loader active="" type="indeterminate" scale="m" id="base-loader" unthemed=""></calcite-loader>
+    <script>
+      if (typeof customElements !== 'undefined') {
+        customElements.efineday = customElements.define;
+      }
+    </script>
+    <!-- crossorigin options added because otherwise we cannot see error messages from unhandled errors and rejections -->
+    <script crossorigin="anonymous" src="https://hubcdn.arcgis.com/opendata-ui/assets/assets/vendor-3bbbf7317b41bf91ce80da0b4bf23132.js"></script>
+<script src="https://hubcdn.arcgis.com/opendata-ui/assets/assets/chunk.28690.f00bbcd0d35607aac333.js"></script>
+<script src="https://hubcdn.arcgis.com/opendata-ui/assets/assets/chunk.32143.057ec027fb5b6a64f9b4.js"></script>
+    <script crossorigin="anonymous" src="https://hubcdn.arcgis.com/opendata-ui/assets/assets/opendata-ui-5917c7bb63406ac4a7e261165a36ac49.js"></script>
+
+    <div id="ember-basic-dropdown-wormhole"></div>
+
+    <!-- opendata-ui version: 5.431.0+73bc3d7bf8 - Fri, 26 Jun 2026 16:34:23 GMT -->
+  
+
+</body></html>
