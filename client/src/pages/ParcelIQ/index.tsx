@@ -437,7 +437,7 @@ function ExplorerTab() {
                       <DialogTrigger asChild>
                         <Button size="sm" variant="outline">View</Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-xl">
+                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                           <DialogTitle className="font-serif">{p.SITEADDRESS}</DialogTitle>
                         </DialogHeader>
@@ -457,58 +457,220 @@ function ExplorerTab() {
 }
 
 function ParcelDetailBody({ data }: { data: Record<string, any> }) {
-  const mv    = data.model_value as number | null;
-  const cv    = data.TOTALVALUE  as number | null;
-  const varPct = data.variance_pct as number | null;
-  const bd    = data.model_breakdown as Record<string, any> | null;
+  const v = data.valuation as Record<string, any> | undefined;
+  const fairValue = v?.fair_market_value ?? data.model_value;
+  const assessed = v?.county_assessment ?? data.TOTALVALUE;
+  const varPct = v?.variance_pct ?? data.variance_pct;
+  const verdict = v?.verdict as string | undefined;
+
+  const verdictStyles =
+    verdict === "over_assessed"
+      ? "bg-red-50 border-red-200 text-red-900"
+      : verdict === "under_assessed"
+        ? "bg-amber-50 border-amber-200 text-amber-900"
+        : "bg-green-50 border-green-200 text-green-900";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* Property facts */}
       <div className="grid grid-cols-2 gap-3 text-sm">
         {[
-          ["PIN",    data.PIN],
-          ["Class",  data.CLASSCD],
-          ["Acres",  data.CALCACREAGE != null ? (+data.CALCACREAGE).toFixed(3) + " ac" : "—"],
-          ["Owner",  data.OWNER],
-        ].map(([l, v]) => (
-          <div key={l} className="bg-neutral-50 rounded p-3">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">{l}</div>
-            <div className="font-medium mt-0.5 truncate">{v ?? "—"}</div>
+          ["PIN", data.PIN],
+          ["Class", data.CLASSCD],
+          ["Acres", data.CALCACREAGE != null ? (+data.CALCACREAGE).toFixed(3) + " ac" : "—"],
+          ["ZIP", data.POSTAL_CODE],
+          ["Owner", data.OWNER],
+          ["City", data.CITY ?? "—"],
+        ].map(([label, value]) => (
+          <div key={label} className="bg-neutral-50 rounded p-3">
+            <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
+            <div className="font-medium mt-0.5 truncate">{value ?? "—"}</div>
           </div>
         ))}
       </div>
 
+      {/* Verdict */}
+      {v?.verdict_label && (
+        <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
+          <div className="flex items-center gap-2 font-semibold">
+            {verdict === "over_assessed" ? (
+              <AlertTriangle className="w-4 h-4" />
+            ) : verdict === "under_assessed" ? (
+              <TrendingDown className="w-4 h-4" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4" />
+            )}
+            {v.verdict_label}
+          </div>
+          <p className="text-sm mt-1 opacity-90">{v.verdict_summary}</p>
+        </div>
+      )}
+
+      {/* Value comparison */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded border p-3 text-center">
           <div className="text-xs text-muted-foreground">County Assessment</div>
-          <div className="text-xl font-serif font-semibold mt-1">{fmt(cv)}</div>
+          <div className="text-xl font-serif font-semibold mt-1">{fmt(assessed)}</div>
         </div>
         <div className="rounded border-2 border-slate-800 p-3 text-center bg-slate-50">
-          <div className="text-xs text-slate-600">ParcelIQ Model</div>
-          <div className="text-xl font-serif font-semibold mt-1">{fmt(mv)}</div>
+          <div className="text-xs text-slate-600 font-medium">Fair Market Value</div>
+          <div className="text-xl font-serif font-semibold mt-1 text-slate-900">{fmt(fairValue)}</div>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            {v?.primary_method === "zillow_adjusted"
+              ? "Deed ratio + Zillow"
+              : v?.primary_method === "deed_ratio"
+                ? "Deed ratio model"
+                : "ParcelIQ model"}
+          </div>
         </div>
         <div className={`rounded border p-3 text-center ${Math.abs(varPct ?? 0) > 15 ? "bg-red-50" : "bg-green-50"}`}>
           <div className="text-xs text-muted-foreground">Variance</div>
           <div className={`text-xl font-serif font-semibold mt-1 ${Math.abs(varPct ?? 0) > 15 ? "text-red-700" : "text-green-700"}`}>
             {varPct != null ? `${varPct > 0 ? "+" : ""}${varPct}%` : "—"}
           </div>
+          {v?.gap_dollars != null && (
+            <div className="text-[10px] text-muted-foreground mt-1">
+              {v.gap_dollars > 0 ? "+" : ""}{fmt(v.gap_dollars)} vs fair value
+            </div>
+          )}
         </div>
       </div>
 
-      {bd && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Model Factors</p>
-          {Object.entries(bd).map(([k, v]: [string, any]) => (
-            <div key={k} className="flex justify-between text-sm border-b pb-1 last:border-0">
-              <span className="text-muted-foreground capitalize">{k.replace(/_/g, " ")}</span>
-              <span className="font-medium">
-                {v.value_effect != null
-                  ? `${v.value_effect > 0 ? "+" : ""}$${Math.abs(v.value_effect).toLocaleString()}`
-                  : v.name ?? v.code ?? ""}
-              </span>
+      {/* Derivation steps */}
+      {v?.steps?.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            How we calculated fair value
+          </p>
+          {v.steps.map((step: Record<string, any>) => (
+            <div key={step.step} className="rounded-lg border bg-white p-3 space-y-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">
+                    {step.step}. {step.title}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">{step.source}</div>
+                </div>
+                {step.result_label && (
+                  <div className="font-mono text-sm font-semibold text-slate-800 shrink-0">
+                    {step.result_label}
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">{step.detail}</p>
+              {step.formula && (
+                <p className="text-xs font-mono bg-neutral-50 rounded px-2 py-1 inline-block">
+                  {step.formula}
+                </p>
+              )}
             </div>
           ))}
         </div>
+      )}
+
+      {/* Zillow metro data */}
+      {v?.zillow && (
+        <Card className="border-blue-200 bg-blue-50/40">
+          <CardHeader className="py-3 px-4 pb-1">
+            <CardTitle className="text-sm font-semibold">Zillow Metro Data · {v.zillow.metro_name}</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-muted-foreground">ZHVI (home value index)</div>
+              <div className="font-medium">
+                ${Number(v.zillow.zhvi_base ?? 0).toLocaleString()} → ${Number(v.zillow.zhvi_current ?? 0).toLocaleString()}
+              </div>
+              <div className="text-[11px] text-muted-foreground">Base: {v.zillow.zhvi_base_date ?? "2021"}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Median sale price</div>
+              <div className="font-medium">
+                ${Number(v.zillow.median_sale_base ?? 0).toLocaleString()} → ${Number(v.zillow.median_sale_current ?? 0).toLocaleString()}
+              </div>
+              <div className="text-[11px] text-muted-foreground">As of {v.zillow.as_of_date ?? "—"}</div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-xs text-muted-foreground">Blended appreciation factor applied</div>
+              <div className="font-mono font-semibold">
+                {Number(v.zillow.appreciation_factor).toFixed(4)}×
+                <span className="text-muted-foreground font-normal ml-2">
+                  (+{((Number(v.zillow.appreciation_factor) - 1) * 100).toFixed(1)}% since revaluation)
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ZIP equity context */}
+      {v?.zip_equity && (
+        <Card>
+          <CardHeader className="py-3 px-4 pb-1">
+            <CardTitle className="text-sm font-semibold">
+              ZIP {v.zip_equity.zip_code} · {v.zip_equity.zip_name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-muted-foreground">Median ratio</div>
+              <div className="font-mono font-semibold">{Number(v.zip_equity.median_ratio).toFixed(3)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Sales samples</div>
+              <div className="font-semibold">{v.zip_equity.sample_count}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Avg assessed</div>
+              <div className="font-semibold">{fmt(v.zip_equity.avg_assessed)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Avg sale price</div>
+              <div className="font-semibold">{fmt(v.zip_equity.avg_sale_price)}</div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Comparable sales for this parcel */}
+      {v?.comparable_sales?.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Register of Deeds · sales for this parcel
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Sale Date</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-right">vs Assessment</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {v.comparable_sales.map((sale: Record<string, any>, i: number) => {
+                const ratio = assessed && sale.selling_price
+                  ? (assessed / sale.selling_price) * 100
+                  : null;
+                return (
+                  <TableRow key={i}>
+                    <TableCell className="text-sm">{sale.sell_date ?? "—"}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {fmt(sale.selling_price)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {ratio != null ? `${ratio.toFixed(1)}%` : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {!v?.zillow && !v?.zip_equity && (
+        <p className="text-xs text-muted-foreground bg-neutral-50 rounded p-3">
+          Run <code className="font-mono">loadSales.mjs</code> and <code className="font-mono">loadZillow.mjs</code> to populate deed-ratio and Zillow metro data for full valuation detail.
+        </p>
       )}
     </div>
   );

@@ -6,6 +6,14 @@ import {
   modelValue, modelBreakdown, equityScore,
   type ParcelAttrs,
 } from "./valuation.js";
+import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type MarketIndexRow } from "./valuationDetail.js";
+
+function fairValueFromRow(row: Record<string, unknown>, attrs: ParcelAttrs): number | null {
+  const assessed = Number(row.total_value ?? 0);
+  if (row.zillow_adjusted_value != null) return Number(row.zillow_adjusted_value);
+  if (row.model_value != null) return Number(row.model_value);
+  return modelValue(attrs);
+}
 
 function enrichRow(row: Record<string, unknown>) {
   const attrs: ParcelAttrs = {
@@ -16,9 +24,14 @@ function enrichRow(row: Record<string, unknown>) {
     ZIP:          row.postal_code as string ?? null,
     SITEADDRESS:  row.address as string ?? null,
   };
-  const mv = modelValue(attrs);
+  const fairValue = fairValueFromRow(row, attrs);
   const cv = Number(row.total_value ?? 0);
-  const vp = mv && cv ? +((cv - mv) / mv * 100).toFixed(1) : null;
+  const vp =
+    row.variance_pct != null
+      ? Number(row.variance_pct)
+      : fairValue && cv
+        ? +(((cv - fairValue) / fairValue) * 100).toFixed(1)
+        : null;
   return {
     PIN:          String(row.pin ?? ""),
     SITEADDRESS:  String(row.address ?? ""),
@@ -31,7 +44,8 @@ function enrichRow(row: Record<string, unknown>) {
     CITY:         String(row.city ?? ""),
     SUBDIVISION:  String(row.subdivision ?? ""),
     LEVY_DUE:     row.levy_due != null ? Number(row.levy_due) : null,
-    model_value:  mv,
+    model_value:  fairValue,
+    zillow_adjusted_value: row.zillow_adjusted_value != null ? Number(row.zillow_adjusted_value) : null,
     variance_pct: vp,
     equity_score: vp != null ? equityScore(vp) : null,
     flagged:      vp != null && Math.abs(vp) > 15,
@@ -103,10 +117,66 @@ export const parceliqRouter = router({
         TOTALVALUE: enriched.TOTALVALUE, CLASSCD: "R",
         ZIP: enriched.POSTAL_CODE, SITEADDRESS: enriched.SITEADDRESS,
       };
-      const mv = enriched.model_value;
+
+      const zip = enriched.POSTAL_CODE;
+      const [zipEquityRes, marketRes, salesRes] = await Promise.all([
+        pool.query(
+          "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
+          [zip]
+        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+        pool.query(
+          "SELECT metro_name, as_of_date, zhvi_current, zhvi_base, zhvi_base_date, median_sale_current, median_sale_base, appreciation_factor, source FROM parceliq_market_index ORDER BY created_at DESC LIMIT 1"
+        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+        pool.query(
+          `SELECT sell_date, selling_price, adj_price, qualified
+           FROM parceliq_sales WHERE pin=$1 AND qualified=TRUE
+           ORDER BY sell_date DESC LIMIT 5`,
+          [input.pin]
+        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+      ]);
+
+      const zipEquity = zipEquityRes.rows[0] as ZipEquityRow | undefined;
+      const marketIndex = marketRes.rows[0] as MarketIndexRow | undefined;
+      const sales = salesRes.rows.map((s) => ({
+        sell_date: s.sell_date ? String(s.sell_date).slice(0, 10) : null,
+        selling_price: Number(s.selling_price),
+        adj_price: s.adj_price != null ? Number(s.adj_price) : null,
+        qualified: Boolean(s.qualified),
+      })) as ComparableSale[];
+
+      const valuation = buildValuationDetail(
+        row,
+        attrs,
+        zipEquity
+          ? {
+              ...zipEquity,
+              median_ratio: Number(zipEquity.median_ratio),
+              sample_count: Number(zipEquity.sample_count),
+              avg_assessed: zipEquity.avg_assessed != null ? Number(zipEquity.avg_assessed) : null,
+              avg_sale_price: zipEquity.avg_sale_price != null ? Number(zipEquity.avg_sale_price) : null,
+            }
+          : null,
+        marketIndex
+          ? {
+              ...marketIndex,
+              zhvi_current: marketIndex.zhvi_current != null ? Number(marketIndex.zhvi_current) : null,
+              zhvi_base: marketIndex.zhvi_base != null ? Number(marketIndex.zhvi_base) : null,
+              median_sale_current: marketIndex.median_sale_current != null ? Number(marketIndex.median_sale_current) : null,
+              median_sale_base: marketIndex.median_sale_base != null ? Number(marketIndex.median_sale_base) : null,
+              appreciation_factor: Number(marketIndex.appreciation_factor),
+            }
+          : null,
+        sales,
+      );
+
       return {
         ...enriched,
-        model_breakdown: mv ? modelBreakdown(attrs, mv) : null,
+        model_value: valuation.fair_market_value,
+        variance_pct: valuation.variance_pct,
+        equity_score: valuation.variance_pct != null ? equityScore(valuation.variance_pct) : null,
+        flagged: valuation.variance_pct != null && Math.abs(valuation.variance_pct) > 15,
+        model_breakdown: valuation.model_breakdown,
+        valuation,
         levy_due:    row.levy_due,
         subdivision: row.subdivision,
         township:    row.township,
