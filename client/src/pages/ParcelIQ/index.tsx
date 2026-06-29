@@ -340,7 +340,8 @@ function ExplorerTab() {
   const [q, setQ]         = useState("");
   const [classCd, setCls] = useState<string>("");
   const [search, setSearch] = useState("");
-  const [selectedParcel, setSelectedParcel] = useState<string | null>(null);
+  const [detailPin, setDetailPin] = useState<string | null>(null);
+  const [detailAddress, setDetailAddress] = useState<string | null>(null);
 
   const { data, isLoading, isFetching } = trpc.parceliq.searchParcels.useQuery(
     { q: search || undefined, classCd: classCd || undefined, limit: 25 },
@@ -348,9 +349,19 @@ function ExplorerTab() {
   );
 
   const parcelDetail = trpc.parceliq.getParcel.useQuery(
-    { pin: selectedParcel! },
-    { enabled: !!selectedParcel }
+    { pin: detailPin! },
+    { enabled: !!detailPin, retry: 1 }
   );
+
+  const openDetail = (pin: string, address: string) => {
+    setDetailPin(pin);
+    setDetailAddress(address);
+  };
+
+  const closeDetail = () => {
+    setDetailPin(null);
+    setDetailAddress(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -433,18 +444,13 @@ function ExplorerTab() {
                   <TableCell><VarianceBadge pct={p.variance_pct} /></TableCell>
                   <TableCell><ScorePill score={p.equity_score} /></TableCell>
                   <TableCell>
-                    <Dialog onOpenChange={(open) => { if (open) setSelectedParcel(p.PIN ?? null); }}>
-                      <DialogTrigger asChild>
-                        <Button size="sm" variant="outline">View</Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <DialogHeader>
-                          <DialogTitle className="font-serif">{p.SITEADDRESS}</DialogTitle>
-                        </DialogHeader>
-                        {parcelDetail.isLoading && <p className="text-sm text-muted-foreground">Loading detail…</p>}
-                        {parcelDetail.data && <ParcelDetailBody data={parcelDetail.data as any} />}
-                      </DialogContent>
-                    </Dialog>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openDetail(p.PIN, p.SITEADDRESS)}
+                    >
+                      View
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -452,6 +458,26 @@ function ExplorerTab() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={detailPin !== null} onOpenChange={(open) => { if (!open) closeDetail(); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-serif">{detailAddress}</DialogTitle>
+          </DialogHeader>
+          {(parcelDetail.isLoading || (parcelDetail.isFetching && !parcelDetail.data)) && (
+            <p className="text-sm text-muted-foreground py-6 text-center">Loading valuation detail…</p>
+          )}
+          {parcelDetail.isError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <p className="font-semibold">Could not load property detail</p>
+              <p className="mt-1">{parcelDetail.error.message}</p>
+            </div>
+          )}
+          {parcelDetail.data?.PIN === detailPin && (
+            <ParcelDetailBody data={parcelDetail.data as any} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

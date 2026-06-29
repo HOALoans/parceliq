@@ -106,10 +106,18 @@ export const parceliqRouter = router({
   getParcel: publicProcedure
     .input(z.object({ pin: z.string().min(1) }))
     .query(async ({ input }) => {
-      const { rows } = await pool.query(
-        "SELECT * FROM parceliq_parcels WHERE pin=$1 LIMIT 1", [input.pin]
+      const pin = input.pin.trim();
+      let { rows } = await pool.query(
+        "SELECT * FROM parceliq_parcels WHERE pin=$1 LIMIT 1", [pin]
       );
-      if (!rows.length) throw new Error(`Parcel ${input.pin} not found`);
+      if (!rows.length) {
+        const normalized = pin.replace(/-/g, "");
+        ({ rows } = await pool.query(
+          "SELECT * FROM parceliq_parcels WHERE REPLACE(pin, '-', '')=$1 LIMIT 1",
+          [normalized]
+        ));
+      }
+      if (!rows.length) throw new Error(`Parcel ${pin} not found`);
       const row = rows[0];
       const enriched = enrichRow(row);
       const attrs: ParcelAttrs = {
@@ -131,7 +139,7 @@ export const parceliqRouter = router({
           `SELECT sell_date, selling_price, adj_price, qualified
            FROM parceliq_sales WHERE pin=$1 AND qualified=TRUE
            ORDER BY sell_date DESC LIMIT 5`,
-          [input.pin]
+          [String(row.pin)]
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
       ]);
 
