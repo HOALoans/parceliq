@@ -7,6 +7,17 @@ import {
   type ParcelAttrs,
 } from "./valuation.js";
 import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type MarketIndexRow } from "./valuationDetail.js";
+import { buildDataFreshness } from "./assessmentFreshness.js";
+
+function toDateLabel(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return null;
+}
 
 function fairValueFromRow(row: Record<string, unknown>, attrs: ParcelAttrs): number | null {
   const assessed = Number(row.total_value ?? 0);
@@ -127,9 +138,9 @@ export const parceliqRouter = router({
       };
 
       const zip = enriched.POSTAL_CODE;
-      const [zipEquityRes, marketRes, salesRes] = await Promise.all([
+      const [zipEquityRes, marketRes, salesRes, rodSyncRes] = await Promise.all([
         pool.query(
-          "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
+          "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
           [zip]
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
         pool.query(
@@ -140,6 +151,11 @@ export const parceliqRouter = router({
            FROM parceliq_sales WHERE pin=$1 AND qualified=TRUE
            ORDER BY sell_date DESC LIMIT 5`,
           [String(row.pin)]
+        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+        pool.query(
+          `SELECT finished_at FROM parceliq_ingest_runs
+           WHERE job_name='register_of_deeds' AND status='success'
+           ORDER BY finished_at DESC LIMIT 1`
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
       ]);
 
@@ -177,6 +193,16 @@ export const parceliqRouter = router({
         sales,
       );
 
+      const zipEquityUpdated = zipEquityRes.rows[0]?.updated_at;
+      const rodSyncAt = rodSyncRes.rows[0]?.finished_at;
+      const zillowAsOf = marketIndex?.as_of_date ?? marketRes.rows[0]?.as_of_date;
+
+      const dataFreshness = buildDataFreshness(row, String(row.pin), sales, {
+        salesDataAsOf: toDateLabel(rodSyncAt),
+        zipEquityAsOf: toDateLabel(zipEquityUpdated),
+        zillowAsOf: toDateLabel(zillowAsOf),
+      });
+
       return {
         ...enriched,
         model_value: valuation.fair_market_value,
@@ -185,6 +211,7 @@ export const parceliqRouter = router({
         flagged: valuation.variance_pct != null && Math.abs(valuation.variance_pct) > 15,
         model_breakdown: valuation.model_breakdown,
         valuation,
+        data_freshness: dataFreshness,
         levy_due:    row.levy_due,
         subdivision: row.subdivision,
         township:    row.township,

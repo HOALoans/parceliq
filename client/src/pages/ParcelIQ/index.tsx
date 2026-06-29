@@ -34,7 +34,7 @@ import {
 import {
   Building2, Search, Target, Scale,
   ClipboardList, AlertTriangle, CheckCircle2,
-  TrendingUp, TrendingDown, RefreshCw, Plus,
+  TrendingUp, TrendingDown, RefreshCw, Plus, Info, ExternalLink,
 } from "lucide-react";
 
 const COUNTY_ASSESSMENT_RATIO = 0.725;
@@ -84,6 +84,12 @@ const normalizePin = (pin: string) => pin.replace(/-/g, "").trim().toUpperCase()
 
 const pinsMatch = (a: string | null | undefined, b: string | null | undefined) =>
   !!a && !!b && normalizePin(a) === normalizePin(b);
+
+const formatAsOf = (value: string | null | undefined) => {
+  if (!value) return "—";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return fmtDate(value);
+  return value;
+};
 
 function VarianceBadge({ pct }: { pct: number | null }) {
   if (pct == null) return <Badge variant="outline">—</Badge>;
@@ -528,6 +534,7 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
 
 function ParcelDetailBody({ data }: { data: Record<string, any> }) {
   const v = data.valuation as Record<string, any> | undefined;
+  const freshness = data.data_freshness as Record<string, any> | undefined;
   const fairValue = v?.fair_market_value ?? data.model_value;
   const assessed = v?.county_assessment ?? data.TOTALVALUE;
   const varPct = v?.variance_pct ?? data.variance_pct;
@@ -540,8 +547,75 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         ? "bg-amber-50 border-amber-200 text-amber-900"
         : "bg-green-50 border-green-200 text-green-900";
 
+  const warnings = (freshness?.warnings as Array<Record<string, string>> | undefined) ?? [];
+
   return (
     <div className="space-y-5">
+      {/* Data provenance */}
+      {freshness && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-semibold text-slate-800">Data sources &amp; freshness</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                ParcelIQ estimates use bulk imports — not live Spatialest PRC data.
+              </p>
+            </div>
+            {freshness.prc_url && (
+              <a
+                href={freshness.prc_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 shrink-0 text-xs font-medium text-slate-700 border border-slate-300 bg-white rounded-md px-2.5 py-1.5 hover:bg-slate-100"
+              >
+                Spatialest PRC <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+            {[
+              ["County assessment", formatAsOf(freshness.assessment_as_of), freshness.assessment_source],
+              ["Register of Deeds sales", formatAsOf(freshness.sales_data_as_of), "Qualified sales sync"],
+              ["ZIP equity ratios", formatAsOf(freshness.zip_equity_as_of), "Deed-ratio by ZIP"],
+              ["Zillow metro index", formatAsOf(freshness.zillow_as_of), "Appreciation factor"],
+              ["Deed on file", formatAsOf(freshness.deed_date), freshness.levy_year ? `Levy year ${freshness.levy_year}` : "—"],
+            ].map(([label, asOf, sub]) => (
+              <div key={label} className="bg-white rounded border px-2.5 py-2">
+                <div className="text-muted-foreground">{label}</div>
+                <div className="font-medium text-slate-800 mt-0.5">As of {asOf}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Stale / mismatch warnings */}
+      {warnings.length > 0 && (
+        <div className="space-y-2">
+          {warnings.map((w) => (
+            <div
+              key={w.code}
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                w.severity === "warning"
+                  ? "bg-amber-50 border-amber-300 text-amber-950"
+                  : "bg-blue-50 border-blue-200 text-blue-950"
+              }`}
+            >
+              <div className="flex items-start gap-2 font-semibold">
+                {w.severity === "warning" ? (
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                ) : (
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                )}
+                {w.title}
+              </div>
+              <p className="mt-1 text-xs leading-relaxed opacity-90">{w.detail}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Property facts */}
       <div className="grid grid-cols-2 gap-3 text-sm">
         {[
@@ -581,6 +655,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         <div className="rounded border p-3 text-center">
           <div className="text-xs text-muted-foreground">County Assessment</div>
           <div className="text-xl font-serif font-semibold mt-1">{fmt(assessed)}</div>
+          <div className="text-[10px] text-muted-foreground mt-1">Tax roll snapshot</div>
         </div>
         <div className="rounded border-2 border-slate-800 p-3 text-center bg-slate-50">
           <div className="text-xs text-slate-600 font-medium">Fair Market Value</div>
