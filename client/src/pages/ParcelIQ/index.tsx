@@ -4,7 +4,7 @@
  * Uses your existing shadcn/ui, tRPC, Tailwind, Recharts, Zod — nothing new to install.
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "../../lib/trpc";           // adjust path to match your trpc client
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -342,20 +342,19 @@ function ExplorerTab() {
   const [search, setSearch] = useState("");
   const [detailPin, setDetailPin] = useState<string | null>(null);
   const [detailAddress, setDetailAddress] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading, isFetching } = trpc.parceliq.searchParcels.useQuery(
     { q: search || undefined, classCd: classCd || undefined, limit: 25 },
     { keepPreviousData: true }
   );
 
-  const parcelDetail = trpc.parceliq.getParcel.useQuery(
-    { pin: detailPin! },
-    { enabled: !!detailPin, retry: 1 }
-  );
-
   const openDetail = (pin: string, address: string) => {
     setDetailPin(pin);
     setDetailAddress(address);
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const closeDetail = () => {
@@ -434,7 +433,10 @@ function ExplorerTab() {
                 </TableRow>
               )}
               {data?.parcels.map((p) => (
-                <TableRow key={p.PIN} className={p.flagged ? "bg-red-50/40" : ""}>
+                <TableRow
+                  key={p.PIN}
+                  className={`${p.flagged ? "bg-red-50/40" : ""} ${detailPin === p.PIN ? "bg-slate-100" : ""}`}
+                >
                   <TableCell className="font-mono text-[11px]">{p.PIN}</TableCell>
                   <TableCell className="font-medium text-sm max-w-[180px] truncate">{p.SITEADDRESS}</TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate">{p.OWNER}</TableCell>
@@ -446,10 +448,10 @@ function ExplorerTab() {
                   <TableCell>
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant={detailPin === p.PIN ? "default" : "outline"}
                       onClick={() => openDetail(p.PIN, p.SITEADDRESS)}
                     >
-                      View
+                      {detailPin === p.PIN ? "Selected" : "View"}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -459,27 +461,45 @@ function ExplorerTab() {
         </CardContent>
       </Card>
 
-      <Dialog open={detailPin !== null} onOpenChange={(open) => { if (!open) closeDetail(); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-serif">{detailAddress}</DialogTitle>
-          </DialogHeader>
-          {(parcelDetail.isLoading || (parcelDetail.isFetching && !parcelDetail.data)) && (
-            <p className="text-sm text-muted-foreground py-6 text-center">Loading valuation detail…</p>
-          )}
-          {parcelDetail.isError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              <p className="font-semibold">Could not load property detail</p>
-              <p className="mt-1">{parcelDetail.error.message}</p>
+      {detailPin && (
+        <Card ref={detailRef} className="border-2 border-slate-800 shadow-lg scroll-mt-4">
+          <CardHeader className="flex flex-row items-center justify-between py-4 px-4">
+            <div>
+              <CardTitle className="text-lg font-serif">{detailAddress}</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1 font-mono">{detailPin}</p>
             </div>
-          )}
-          {parcelDetail.data?.PIN === detailPin && (
-            <ParcelDetailBody data={parcelDetail.data as any} />
-          )}
-        </DialogContent>
-      </Dialog>
+            <Button size="sm" variant="outline" onClick={closeDetail}>
+              Close
+            </Button>
+          </CardHeader>
+          <CardContent className="px-4 pb-6">
+            <ParcelDetailFetcher pin={detailPin} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
+}
+
+function ParcelDetailFetcher({ pin }: { pin: string }) {
+  const { data, isLoading, isError, error, isFetching } =
+    trpc.parceliq.getParcel.useQuery({ pin }, { retry: 1 });
+
+  if (isLoading || (isFetching && !data)) {
+    return <p className="text-sm text-muted-foreground py-8 text-center">Loading valuation detail…</p>;
+  }
+  if (isError) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <p className="font-semibold">Could not load property detail</p>
+        <p className="mt-1">{error.message}</p>
+      </div>
+    );
+  }
+  if (!data) {
+    return <p className="text-sm text-muted-foreground py-8 text-center">No detail returned for this parcel.</p>;
+  }
+  return <ParcelDetailBody data={data as Record<string, any>} />;
 }
 
 function ParcelDetailBody({ data }: { data: Record<string, any> }) {
