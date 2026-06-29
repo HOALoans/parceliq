@@ -7,7 +7,7 @@ import {
   type ParcelAttrs,
 } from "./valuation.js";
 
-const GIS_URL = "https://services.arcgis.com/aJ16ENn1AaqdFlqx/arcgis/rest/services/Buncombe_Parcels/FeatureServer/0/query";
+const GIS_URL = "https://data-bunco.opendata.arcgis.com/datasets/bunco::buncombe-county-parcels/FeatureServer/0/query";
 
 async function queryGis(params: Record<string, string>) {
   const qs = new URLSearchParams({ ...params, f: "json" }).toString();
