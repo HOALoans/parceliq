@@ -128,7 +128,8 @@ export const parceliqRouter = router({
         ZIP: input.zip, SITEADDRESS: input.address,
       };
       const mv = modelValue(attrs);
-      return { model_value: mv, breakdown: mv ? modelBreakdown(attrs, mv) : null };
+      return { model_value: mv,
+    zillow_adjusted_value: Number(row.zillow_adjusted_value) || mv, breakdown: mv ? modelBreakdown(attrs, mv) : null };
     }),
 
   calcRevenue: publicProcedure
