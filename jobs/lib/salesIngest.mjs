@@ -51,31 +51,62 @@ function parseSalesRow(headers, vals) {
   ];
 }
 
-const UPSERT_SQL = `
-  INSERT INTO parceliq_sales (
-    pin, address, city, sell_date, selling_price, adj_price,
-    qualified, deed_book, deed_date, vacant_lot
-  ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-  ON CONFLICT (pin, sell_date, selling_price, (COALESCE(deed_book, '')))
-  DO UPDATE SET
-    address = EXCLUDED.address,
-    city = EXCLUDED.city,
-    adj_price = EXCLUDED.adj_price,
-    qualified = EXCLUDED.qualified,
-    deed_date = EXCLUDED.deed_date,
-    vacant_lot = EXCLUDED.vacant_lot
-  RETURNING (xmax = 0) AS inserted
+const BATCH_UPSERT_SQL = `
+  WITH upserted AS (
+    INSERT INTO parceliq_sales (
+      pin, address, city, sell_date, selling_price, adj_price,
+      qualified, deed_book, deed_date, vacant_lot
+    )
+    SELECT * FROM UNNEST(
+      $1::varchar[],
+      $2::varchar[],
+      $3::varchar[],
+      $4::date[],
+      $5::int[],
+      $6::int[],
+      $7::bool[],
+      $8::varchar[],
+      $9::date[],
+      $10::bool[]
+    )
+    ON CONFLICT (pin, sell_date, selling_price, (COALESCE(deed_book, '')))
+    DO UPDATE SET
+      address = EXCLUDED.address,
+      city = EXCLUDED.city,
+      adj_price = EXCLUDED.adj_price,
+      qualified = EXCLUDED.qualified,
+      deed_date = EXCLUDED.deed_date,
+      vacant_lot = EXCLUDED.vacant_lot
+    RETURNING (xmax = 0) AS inserted
+  )
+  SELECT
+    COUNT(*) FILTER (WHERE inserted) AS inserted,
+    COUNT(*) FILTER (WHERE NOT inserted) AS updated
+  FROM upserted
 `;
 
 export async function upsertSalesBatch(pool, batch) {
-  let inserted = 0;
-  let updated = 0;
+  if (!batch.length) return { inserted: 0, updated: 0 };
+
+  // CSV may contain duplicate keys within a batch — keep last occurrence.
+  const deduped = new Map();
   for (const row of batch) {
-    const { rows } = await pool.query(UPSERT_SQL, row);
-    if (rows[0]?.inserted) inserted++;
-    else updated++;
+    const key = `${row[0]}|${row[3]}|${row[4]}|${row[7] ?? ""}`;
+    deduped.set(key, row);
   }
-  return { inserted, updated };
+  const uniqueRows = [...deduped.values()];
+  if (!uniqueRows.length) return { inserted: 0, updated: 0 };
+
+  const cols = Array.from({ length: 10 }, () => []);
+  for (const row of uniqueRows) {
+    for (let i = 0; i < 10; i++) cols[i].push(row[i]);
+  }
+
+  const { rows: counts } = await pool.query(BATCH_UPSERT_SQL, cols);
+  return {
+    inserted: Number(counts[0]?.inserted ?? 0),
+    updated: Number(counts[0]?.updated ?? 0),
+  };
 }
 
 /**
@@ -126,13 +157,14 @@ export async function ingestSalesCsv(pool, { csvPath, fullReload = false }) {
 
     batch.push(row);
 
-    if (batch.length >= 200) {
+    if (batch.length >= 500) {
       const counts = await upsertSalesBatch(pool, batch);
       inserted += counts.inserted;
       updated += counts.updated;
       batch.length = 0;
-      if ((inserted + updated) % 5000 < 200) {
-        process.stdout.write(`\r  Upserted: ${(inserted + updated).toLocaleString()}`);
+      const total = inserted + updated;
+      if (total % 10000 < 500) {
+        process.stdout.write(`\r  Upserted: ${total.toLocaleString()}`);
       }
     }
   }
