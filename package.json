@@ -12,6 +12,8 @@
     "dev:client": "vite",
     "build": "npm install --include=dev && vite build && tsc -p tsconfig.server.json",
     "start": "node dist/server/_core/index.js",
+    "sync:rod": "node jobs/syncRegisterOfDeeds.mjs",
+    "sync:rod:full": "node jobs/syncRegisterOfDeeds.mjs --full-reload",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc --noEmit"
   },

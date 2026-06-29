@@ -1,0 +1,29 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# After connecting this repo, set DATABASE_URL on both services.
+# Point ROD_CSV_URL at Buncombe's open sales CSV when available.
+
+services:
+  - type: web
+    name: parceliq
+    runtime: node
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+
+  - type: cron
+    name: parceliq-rod-sync
+    runtime: node
+    schedule: "0 7 * * 0"
+  # Sundays 07:00 UTC ≈ 2:00 AM US Eastern (standard time)
+    buildCommand: npm install
+    startCommand: npm run sync:rod
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: ROD_CSV_URL
+        sync: false

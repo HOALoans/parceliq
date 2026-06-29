@@ -23,6 +23,13 @@ export async function ensureTables(): Promise<void> {
       parcel_pin VARCHAR(64), user_name VARCHAR(128), description TEXT,
       metadata JSONB, created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS parceliq_ingest_runs (
+      id SERIAL PRIMARY KEY, job_name VARCHAR(64) NOT NULL,
+      started_at TIMESTAMP NOT NULL DEFAULT NOW(), finished_at TIMESTAMP,
+      status VARCHAR(16) NOT NULL DEFAULT 'running',
+      rows_inserted INTEGER DEFAULT 0, rows_updated INTEGER DEFAULT 0,
+      source_file VARCHAR(512), error_message TEXT, metadata JSONB
+    )`);
     await pool.query(`CREATE TABLE IF NOT EXISTS parceliq_counties (
       id SERIAL PRIMARY KEY, name VARCHAR(128) NOT NULL, state VARCHAR(2) NOT NULL,
       fips_code VARCHAR(10), gis_feature_url VARCHAR(512),
