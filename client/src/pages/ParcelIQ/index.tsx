@@ -92,56 +92,52 @@ const formatAsOf = (value: string | null | undefined) => {
   return value;
 };
 
-/** Plain-English summary of how fair market value was derived. */
-function fairMarketExplainer(
-  v: Record<string, any> | undefined,
-  prc: Record<string, any> | undefined,
-  assessed: number,
-): string {
-  if (!v?.fair_market_value) {
-    return "We don't have enough sales and market data to produce a fair market estimate for this parcel.";
+/** Plain-English summary of the headline market estimate (comps / own sale — not ZIP ratio). */
+function marketEstimateExplainer(v: Record<string, any> | undefined): string {
+  const me = v?.market_estimate;
+  if (!me?.value) {
+    return "We don't have enough parcel-specific sales or comparable evidence to produce a market estimate. Compare the county assessment to nearby sales below, or consult a licensed appraiser.";
   }
 
-  const zipLabel = v.zip_equity?.zip_name ?? v.zip_equity?.zip_code ?? "this area";
-  const ratioPct =
-    v.zip_equity?.median_ratio != null
-      ? (Number(v.zip_equity.median_ratio) * 100).toFixed(1)
-      : null;
+  const range =
+    me.range_low != null && me.range_high != null && me.range_low !== me.range_high
+      ? ` We show a rough range of ${fmt(me.range_low)}–${fmt(me.range_high)} from the methods that applied.`
+      : "";
 
-  const countyPhrase = prc
-    ? `the county's live appraised value of ${fmt(assessed)} (from Spatialest PRC)`
-    : `the county's assessed value of ${fmt(assessed)}`;
-
-  if (v.primary_method === "zillow_adjusted" && ratioPct) {
+  if (me.method === "own_sale") {
     return (
-      `Here's how we got this number in plain English: We started with ${countyPhrase}. ` +
-      `Then we looked at recent home sales in ${zipLabel} and found that county assessments in that area are typically only about ${ratioPct}% of what homes actually sell for — so the tax value usually lags the real market. ` +
-      `We adjusted for that gap, then added Asheville-area price growth since the county's last broad revaluation (using Zillow's metro home-value trend). ` +
-      `The result is our estimate of what this property would likely sell for today — not necessarily the number on the tax bill.`
+      `Our market estimate (${fmt(me.value)}) is anchored on this parcel's own qualified Register of Deeds sale` +
+      `${me.confidence === "high" ? " — the strongest evidence we have" : ", with time adjustment where the sale is older"}.` +
+      ` We do not scale the county assessment by a ZIP-wide ratio to guess market value.${range}`
     );
   }
 
-  if (v.primary_method === "deed_ratio" && ratioPct) {
+  if (me.method === "comparable_sales") {
     return (
-      `Here's how we got this number in plain English: We started with ${countyPhrase}. ` +
-      `Recent qualified sales in ${zipLabel} show that county assessments run at about ${ratioPct}% of real sale prices on average. ` +
-      `We divided this property's assessment by that ${ratioPct}% — in other words, if this home is taxed like its neighbors, what would it probably sell for? ` +
-      `That gives our fair market value estimate. We did not add a separate Zillow adjustment because the county record already reflects a recent appraisal update.`
-    );
-  }
-
-  if (ratioPct) {
-    return (
-      `Here's how we got this number in plain English: We compared ${countyPhrase} to the pattern of actual home sales in ${zipLabel}, ` +
-      `where assessments have averaged about ${ratioPct}% of sale prices. ` +
-      `Scaling this property up by that same local ratio produces our fair market value estimate.`
+      `Our market estimate (${fmt(me.value)}) is the median of recent qualified sales of similar properties in the same ZIP` +
+      ` (similar price range to this assessment). This is the sales-comparison approach appraisers use — not an extrapolation from county under-assessment.${range}`
     );
   }
 
   return (
-    `Here's how we got this number in plain English: With limited sales data for this parcel, we used property characteristics ` +
-    `(size, location, class) and Buncombe County market benchmarks to estimate what it would likely sell for today. ` +
-    `This is a model-based estimate — treat it as directional, not an appraisal.`
+    `With limited sales for this parcel, our market estimate (${fmt(me.value)}) comes from property characteristics` +
+    ` (lot, location, class). Treat it as directional only — not an appraisal.${range}`
+  );
+}
+
+function equityExtrapolationExplainer(v: Record<string, any> | undefined): string {
+  const ex = v?.equity_extrapolation;
+  if (!ex?.value) {
+    return "ZIP equity ratio data is not available for this parcel.";
+  }
+  const ratioPct = ex.zip_median_ratio != null ? (ex.zip_median_ratio * 100).toFixed(1) : null;
+  return (
+    `If this property were taxed like the typical sale in its ZIP (${ratioPct}% assessment-to-sale ratio),` +
+    ` the math yields ${fmt(ex.value)} — but that assumes this parcel is "under-assessed" in the same way as the ZIP average.` +
+    ` ${ex.disclaimer ?? ""}` +
+    (ex.parcel_ratio_vs_zip != null
+      ? ` This parcel's own sale ratio differs from the ZIP median by ${ex.parcel_ratio_vs_zip > 0 ? "+" : ""}${ex.parcel_ratio_vs_zip} percentage points.`
+      : "")
   );
 }
 
@@ -276,7 +272,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
     : 80;
 
   const stats = [
-    { label: "Assessment Ratio",   value: `${countyPct.toFixed(1)}%`, sub: "Of market value (county-wide)", color: "border-t-amber-500" },
+    { label: "Assessment Ratio",   value: `${countyPct.toFixed(1)}%`, sub: "Median assessment ÷ sale (equity study)", color: "border-t-amber-500" },
     { label: "Total Parcels",      value: "112,847",  sub: "Buncombe County",               color: "border-t-slate-500" },
     { label: "Total Assessed",     value: "$24.3B",   sub: "Model-derived",                  color: "border-t-green-500" },
     { label: "Equity Flags",       value: "4,219",    sub: "Properties ±15% off",            color: "border-t-red-500" },
@@ -294,12 +290,37 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
         </CardHeader>
         <CardContent className="space-y-4 px-4 pb-4">
           <p className="text-sm text-amber-950 leading-relaxed">
-            Buncombe County assesses at only{" "}
+            Buncombe County's median assessment-to-sale ratio is{" "}
             <strong className="text-lg">{countyPct.toFixed(1)}%</strong>{" "}
-            of actual market value — confirming exactly what the{" "}
-            <strong>Mountain Xpress</strong> article reported (they said 67–73%).
-            Assessed values across the county systematically lag market prices.
+            across qualified deed sales since 2020. This measures how assessments compare to
+            actual sale prices <em>by ZIP</em> — useful for uniformity and equity analysis, not as a
+            per-parcel market appraisal.
           </p>
+
+          <div className="h-80 rounded-lg border bg-white p-2 pt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                margin={{ top: 4, right: 8, left: 0, bottom: 48 }}
+              >
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 10 }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={56}
+                  interval={0}
+                />
+                <YAxis
+                  domain={[yMin, yMax]}
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <Tooltip formatter={(v: number) => [`${v}%`, "Median Ratio"]} />
+                <Bar dataKey="ratio" fill="#b45309" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
           <Table>
             <TableHeader>
@@ -329,31 +350,6 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
               ))}
             </TableBody>
           </Table>
-
-          <div className="h-80 rounded-lg border bg-white p-2 pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 4, right: 8, left: 0, bottom: 48 }}
-              >
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10 }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={56}
-                  interval={0}
-                />
-                <YAxis
-                  domain={[yMin, yMax]}
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <Tooltip formatter={(v: number) => [`${v}%`, "Median Ratio"]} />
-                <Bar dataKey="ratio" fill="#b45309" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
         </CardContent>
       </Card>
 
@@ -495,7 +491,8 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
             ZIP {zip} · {data?.zipName ?? "…"}
           </h2>
           <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-            {data?.methodology ?? "Loading equity sample…"}
+            Properties with qualified Register of Deeds sales since 2020 that feed the ZIP median ratio.
+            These are the evidence behind the equity study — open any row for a parcel-specific market estimate.
           </p>
         </div>
         {data?.summary && (
@@ -829,7 +826,9 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
   const freshness = data.data_freshness as Record<string, any> | undefined;
   const prc = (v?.prc ?? data.prc) as Record<string, any> | undefined;
   const taxRoll = v?.tax_roll_assessment ?? data.TOTALVALUE;
-  const fairValue = v?.fair_market_value ?? data.model_value;
+  const fairValue = v?.market_estimate?.value ?? v?.fair_market_value ?? data.model_value;
+  const equityExtrap = v?.equity_extrapolation?.value as number | undefined;
+  const marketEst = v?.market_estimate as Record<string, any> | undefined;
   const assessed = v?.county_assessment ?? v?.prc_assessment ?? data.TOTALVALUE;
   const varPct = v?.variance_pct ?? data.variance_pct;
   const verdict = v?.verdict as string | undefined;
@@ -872,8 +871,8 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
             {[
               ["County assessment", formatAsOf(freshness.prc_as_of ?? freshness.assessment_as_of), freshness.assessment_source],
               ["Register of Deeds sales", formatAsOf(freshness.sales_data_as_of), "Qualified sales sync"],
-              ["ZIP equity ratios", formatAsOf(freshness.zip_equity_as_of), "Deed-ratio by ZIP"],
-              ["Zillow metro index", formatAsOf(freshness.zillow_as_of), "Appreciation factor"],
+              ["ZIP equity ratios", formatAsOf(freshness.zip_equity_as_of), "Uniformity study by ZIP"],
+              ["Zillow metro index", formatAsOf(freshness.zillow_as_of), "Regional trend (ZHVI)"],
               ["Deed on file", formatAsOf(freshness.deed_date), freshness.levy_year ? `Levy year ${freshness.levy_year}` : "—"],
             ].map(([label, asOf, sub]) => (
               <div key={label} className="bg-white rounded border px-2.5 py-2">
@@ -1025,7 +1024,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
       )}
 
       {/* Value comparison */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded border p-3 text-center">
           <div className="text-xs text-muted-foreground">County Assessment</div>
           <div className="text-xl font-serif font-semibold mt-1">{fmt(assessed)}</div>
@@ -1037,39 +1036,62 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           )}
         </div>
         <div className="rounded border-2 border-slate-800 p-3 text-center bg-slate-50">
-          <div className="text-xs text-slate-600 font-medium">Fair Market Value</div>
+          <div className="text-xs text-slate-600 font-medium">Market Estimate</div>
           <div className="text-xl font-serif font-semibold mt-1 text-slate-900">{fmt(fairValue)}</div>
           <div className="text-[10px] text-muted-foreground mt-1">
-            {v?.primary_method === "zillow_adjusted"
-              ? "Deed ratio + Zillow"
-              : v?.primary_method === "deed_ratio"
-                ? "Deed ratio model"
-                : v?.primary_method === "prc_current"
-                  ? "PRC + deed ratio"
-                  : "ParcelIQ model"}
+            {marketEst?.method_label ?? "Parcel-specific evidence"}
+            {marketEst?.confidence && (
+              <span className="ml-1">· {marketEst.confidence} confidence</span>
+            )}
           </div>
+          {marketEst?.range_low != null && marketEst?.range_high != null && fairValue != null && (
+            <div className="text-[10px] text-slate-600 mt-1">
+              Range: {fmt(marketEst.range_low)}–{fmt(marketEst.range_high)}
+            </div>
+          )}
         </div>
-        <div className={`rounded border p-3 text-center ${Math.abs(varPct ?? 0) > 15 ? "bg-red-50" : "bg-green-50"}`}>
-          <div className="text-xs text-muted-foreground">Variance</div>
+        <div className={`rounded border p-3 text-center ${Math.abs(varPct ?? 0) > 15 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+          <div className="text-xs text-muted-foreground">vs. Market Estimate</div>
           <div className={`text-xl font-serif font-semibold mt-1 ${Math.abs(varPct ?? 0) > 15 ? "text-red-700" : "text-green-700"}`}>
             {varPct != null ? `${varPct > 0 ? "+" : ""}${varPct}%` : "—"}
           </div>
           {v?.gap_dollars != null && (
             <div className="text-[10px] text-muted-foreground mt-1">
-              {v.gap_dollars > 0 ? "+" : ""}{fmt(v.gap_dollars)} vs fair value
+              {v.gap_dollars > 0 ? "+" : ""}{fmt(v.gap_dollars)} vs estimate
             </div>
           )}
         </div>
       </div>
 
-      {/* Fair market value — plain English */}
+      {/* Market estimate methodology */}
       {fairValue != null && (
         <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">
-            What is fair market value?
+            How we estimate market value
           </p>
           <p className="text-sm text-slate-700 leading-relaxed">
-            {fairMarketExplainer(v, prc, assessed)}
+            {marketEstimateExplainer(v)}
+          </p>
+        </div>
+      )}
+
+      {/* ZIP equity extrapolation — separate from market value */}
+      {equityExtrap != null && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50/60 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
+            ZIP equity extrapolation (uniformity metric only)
+          </p>
+          <div className="flex flex-wrap items-baseline gap-3 mb-2">
+            <span className="text-2xl font-serif font-semibold text-amber-950">{fmt(equityExtrap)}</span>
+            {v?.equity_extrapolation?.metro_adjusted_value != null &&
+              v.equity_extrapolation.metro_adjusted_value !== equityExtrap && (
+              <span className="text-sm text-amber-800">
+                Metro-adjusted: {fmt(v.equity_extrapolation.metro_adjusted_value)}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-amber-950/90 leading-relaxed">
+            {equityExtrapolationExplainer(v)}
           </p>
         </div>
       )}
@@ -1078,7 +1100,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
       {v?.steps?.length > 0 && (
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            How we calculated fair value
+            Calculation steps
           </p>
           {v.steps.map((step: Record<string, any>) => (
             <div key={step.step} className="rounded-lg border bg-white p-3 space-y-1">
@@ -1106,13 +1128,18 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         </div>
       )}
 
-      {/* Zillow metro data */}
+      {/* Zillow metro data — context only */}
       {v?.zillow && (
         <Card className="border-blue-200 bg-blue-50/40">
           <CardHeader className="py-3 px-4 pb-1">
-            <CardTitle className="text-sm font-semibold">Zillow Metro Data · {v.zillow.metro_name}</CardTitle>
+            <CardTitle className="text-sm font-semibold">Metro Price Trend · {v.zillow.metro_name}</CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 grid grid-cols-2 gap-3 text-sm">
+          <CardContent className="px-4 pb-4 space-y-3 text-sm">
+            <p className="text-xs text-blue-900 leading-relaxed">
+              ZHVI is Zillow's <strong>regional home-value index</strong>, not a Zestimate for this address.
+              We use it only to time-adjust old sales or the equity extrapolation — not as the headline market estimate.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="text-xs text-muted-foreground">ZHVI (home value index)</div>
               <div className="font-medium">
@@ -1128,27 +1155,62 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
               <div className="text-[11px] text-muted-foreground">As of {fmtDate(v.zillow.as_of_date)}</div>
             </div>
             <div className="col-span-2">
-              <div className="text-xs text-muted-foreground">Blended appreciation factor applied</div>
+              <div className="text-xs text-muted-foreground">ZHVI appreciation since revaluation base</div>
               <div className="font-mono font-semibold">
                 {Number(v.zillow.appreciation_factor).toFixed(4)}×
                 <span className="text-muted-foreground font-normal ml-2">
-                  (+{((Number(v.zillow.appreciation_factor) - 1) * 100).toFixed(1)}% since revaluation)
+                  (+{((Number(v.zillow.appreciation_factor) - 1) * 100).toFixed(1)}%)
                 </span>
               </div>
+            </div>
             </div>
           </CardContent>
         </Card>
       )}
 
+      {/* Nearby comparable sales used for market estimate */}
+      {v?.nearby_comps?.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Nearby comparable sales · same ZIP
+          </p>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Address</TableHead>
+                <TableHead>Sale Date</TableHead>
+                <TableHead className="text-right">Sale Price</TableHead>
+                <TableHead className="text-right">Assessed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {v.nearby_comps.map((comp: Record<string, any>) => (
+                <TableRow key={comp.pin}>
+                  <TableCell className="text-sm max-w-[200px] truncate">{comp.address ?? comp.pin}</TableCell>
+                  <TableCell className="text-sm">{fmtDate(comp.sell_date)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{fmt(comp.selling_price)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{fmt(comp.assessed)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
       {/* ZIP equity context */}
       {v?.zip_equity && (
-        <Card>
+        <Card className="border-amber-200">
           <CardHeader className="py-3 px-4 pb-1">
             <CardTitle className="text-sm font-semibold">
-              ZIP {v.zip_equity.zip_code} · {v.zip_equity.zip_name}
+              ZIP {v.zip_equity.zip_code} · {v.zip_equity.zip_name} · equity study
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+          <CardContent className="px-4 pb-4 space-y-2 text-sm">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Median assessment-to-sale ratio for this ZIP from {v.zip_equity.sample_count} matched deed sales.
+              Used for county-wide uniformity analysis — not substituted for the market estimate above.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <div className="text-xs text-muted-foreground">Median ratio</div>
               <div className="font-mono font-semibold">{Number(v.zip_equity.median_ratio).toFixed(3)}</div>
@@ -1164,6 +1226,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
             <div>
               <div className="text-xs text-muted-foreground">Avg sale price</div>
               <div className="font-semibold">{fmt(v.zip_equity.avg_sale_price)}</div>
+            </div>
             </div>
           </CardContent>
         </Card>
@@ -1207,7 +1270,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
 
       {!v?.zillow && !v?.zip_equity && (
         <p className="text-xs text-muted-foreground bg-neutral-50 rounded p-3">
-          Run <code className="font-mono">loadSales.mjs</code> and <code className="font-mono">loadZillow.mjs</code> to populate deed-ratio and Zillow metro data for full valuation detail.
+          Run <code className="font-mono">npm run sync:rod</code> to populate deed sales and ZIP equity ratios for uniformity analysis.
         </p>
       )}
     </div>
@@ -1379,8 +1442,9 @@ function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
       <div>
         <h2 className="text-lg font-semibold">Equity Analysis</h2>
         <p className="text-sm text-muted-foreground">
-          Assessment-to-sale ratios by ZIP, from {data?.summary?.zipCount ?? "—"} Buncombe County zip codes
-          (NC Register of Deeds qualified sales). Click a ZIP to see the matched properties.
+          Sales ratio study by ZIP — measures whether assessments are applied uniformly relative to
+          qualified deed sales. This is an <strong>equity / uniformity</strong> view, not a per-parcel
+          market appraisal. Click a ZIP to inspect the matched properties.
         </p>
       </div>
 
@@ -1392,11 +1456,12 @@ function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
               {data.summary.ratioSpreadPct} percentage point gap
             </p>
             <p className="text-sm text-amber-900 mt-2 leading-relaxed">
-              Between the highest and lowest assessed zip codes, the median assessment-to-sale ratio
-              varies by <strong>{data.summary.ratioSpreadPct} points</strong> — from{" "}
-              {(data.summary.minRatio * 100).toFixed(1)}% of market ({data.summary.minRatio.toFixed(3)}) to{" "}
+              Between ZIPs, the median assessment-to-sale ratio varies by{" "}
+              <strong>{data.summary.ratioSpreadPct} percentage points</strong> — from{" "}
+              {(data.summary.minRatio * 100).toFixed(1)}% ({data.summary.minRatio.toFixed(3)}) to{" "}
               {(data.summary.maxRatio * 100).toFixed(1)}% ({data.summary.maxRatio.toFixed(3)}).
-              Lower ratios mean assessments lag further below actual sale prices.
+              A wider spread suggests assessments may not be applied uniformly across neighborhoods.
+              Parcel detail pages use comparable sales for market estimates — not this ZIP-wide extrapolation.
             </p>
           </CardContent>
         </Card>

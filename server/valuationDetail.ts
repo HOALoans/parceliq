@@ -1,4 +1,4 @@
-import { modelValue, modelBreakdown, equityScore, type ParcelAttrs } from "./valuation.js";
+import { modelValue, modelBreakdown, type ParcelAttrs } from "./valuation.js";
 import type { PrcRecord } from "./spatialestPrc.js";
 
 export type ComparableSale = {
@@ -6,6 +6,14 @@ export type ComparableSale = {
   selling_price: number;
   adj_price: number | null;
   qualified: boolean;
+};
+
+export type NearbyComp = {
+  pin: string;
+  address: string | null;
+  sell_date: string | null;
+  selling_price: number;
+  assessed: number | null;
 };
 
 export type ZipEquityRow = {
@@ -39,8 +47,34 @@ export type ValuationStep = {
   result_label?: string;
 };
 
+export type EstimateLine = {
+  method: string;
+  label: string;
+  value: number | null;
+  confidence: "high" | "medium" | "low";
+  detail: string;
+};
+
 export type ValuationDetail = {
+  /** Headline market estimate — comps / own sale / characteristics; NOT deed-ratio extrapolation. */
   fair_market_value: number | null;
+  market_estimate: {
+    value: number | null;
+    method: "own_sale" | "comparable_sales" | "gradient_model" | "insufficient";
+    method_label: string;
+    confidence: "high" | "medium" | "low";
+    range_low: number | null;
+    range_high: number | null;
+    estimates: EstimateLine[];
+  };
+  /** ZIP sales-ratio study extrapolation — equity uniformity only, not a market appraisal. */
+  equity_extrapolation: {
+    value: number | null;
+    metro_adjusted_value: number | null;
+    zip_median_ratio: number | null;
+    parcel_ratio_vs_zip: number | null;
+    disclaimer: string;
+  };
   county_assessment: number;
   tax_roll_assessment: number | null;
   prc_assessment: number | null;
@@ -49,11 +83,13 @@ export type ValuationDetail = {
   verdict: "over_assessed" | "under_assessed" | "fair" | "unknown";
   verdict_label: string;
   verdict_summary: string;
-  primary_method: "zillow_adjusted" | "deed_ratio" | "gradient_model" | "prc_current";
+  /** @deprecated Use market_estimate.method — kept for compatibility */
+  primary_method: "own_sale" | "comparable_sales" | "gradient_model" | "insufficient" | "deed_ratio" | "zillow_adjusted" | "prc_current";
   steps: ValuationStep[];
   zip_equity: ZipEquityRow | null;
   zillow: MarketIndexRow | null;
   comparable_sales: ComparableSale[];
+  nearby_comps: NearbyComp[];
   model_breakdown: ReturnType<typeof modelBreakdown> | null;
   prc: PrcRecord | null;
 };
@@ -62,64 +98,174 @@ function roundDollars(n: number) {
   return Math.round(n);
 }
 
+function median(arr: number[]) {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+function isLandSale(assessed: number, salePrice: number) {
+  return salePrice > 0 && assessed / salePrice >= 2;
+}
+
+function saleAgeDays(sellDate: string | null): number | null {
+  if (!sellDate) return null;
+  const d = new Date(sellDate);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function likelyCommercial(prc: PrcRecord | null, ownerName: string): boolean {
+  const landUse = (prc?.land_use ?? "").toLowerCase();
+  if (/commercial|retail|office|industrial|mixed|hotel|restaurant/.test(landUse)) return true;
+  return /LLC|INC\.?|CORP|L\.?P\.?|TRUST|PARTNERS|HOLDINGS|PROPERTIES|REALTY|DEVELOPMENT|ENTERPRISES|ASSOCIATES|COMPANY|CO\./i.test(ownerName);
+}
+
 export function buildValuationDetail(
   row: Record<string, unknown>,
   attrs: ParcelAttrs,
   zipEquity: ZipEquityRow | null,
   marketIndex: MarketIndexRow | null,
   sales: ComparableSale[],
+  nearbyComps: NearbyComp[],
   prc: PrcRecord | null = null,
 ): ValuationDetail {
   const taxRollAssessed = Number(row.total_value ?? 0);
   const prcAssessed = prc?.total_appraised && prc.total_appraised > 0 ? prc.total_appraised : null;
   const assessed = prcAssessed ?? taxRollAssessed;
-  const currentYear = new Date().getFullYear();
-  const prcIsCurrent =
-    prcAssessed != null &&
-    prc?.latest_value_year != null &&
-    prc.latest_value_year >= currentYear - 1;
+  const ownerName = String(row.owner_name ?? "");
 
   const medianRatio = zipEquity?.median_ratio ?? null;
-  const appreciation =
-    marketIndex?.appreciation_factor ??
-    (row.market_appreciation != null ? Number(row.market_appreciation) : null);
+  const appreciation = marketIndex?.appreciation_factor ?? null;
 
-  const dbDeedModel = row.model_value != null ? Number(row.model_value) : null;
-  const dbZillowFair =
-    row.zillow_adjusted_value != null ? Number(row.zillow_adjusted_value) : null;
+  const deedExtrapolation =
+    medianRatio && assessed > 0 ? roundDollars(assessed / medianRatio) : null;
 
-  const deedImpliedMarket =
-    medianRatio && assessed > 0
-      ? roundDollars(assessed / medianRatio)
-      : dbDeedModel;
+  const metroAdjustedExtrapolation =
+    deedExtrapolation && appreciation
+      ? roundDollars(deedExtrapolation * appreciation)
+      : null;
 
-  const zillowFair =
-    !prcIsCurrent && deedImpliedMarket && appreciation
-      ? roundDollars(deedImpliedMarket * appreciation)
-      : dbZillowFair && !prcIsCurrent
-        ? dbZillowFair
-        : null;
+  const gradientEstimate = modelValue(attrs);
 
-  let fairValue: number | null = zillowFair ?? deedImpliedMarket ?? dbDeedModel;
-  let primaryMethod: ValuationDetail["primary_method"] = zillowFair
-    ? "zillow_adjusted"
-    : deedImpliedMarket
-      ? "deed_ratio"
-      : "gradient_model";
-
-  if (!fairValue) {
-    fairValue = modelValue(attrs);
-    primaryMethod = "gradient_model";
+  const latestSale = sales[0];
+  let ownSaleEstimate: number | null = null;
+  let ownSaleDetail = "";
+  if (latestSale && latestSale.selling_price > 0 && !isLandSale(assessed, latestSale.selling_price)) {
+    const ageDays = saleAgeDays(latestSale.sell_date);
+    if (ageDays != null && ageDays > 540 && appreciation && appreciation > 1) {
+      ownSaleEstimate = roundDollars(latestSale.selling_price * appreciation);
+      ownSaleDetail = `Most recent qualified sale (${latestSale.sell_date}) for $${latestSale.selling_price.toLocaleString()}, time-adjusted using metro appreciation since that sale.`;
+    } else {
+      ownSaleEstimate = latestSale.selling_price;
+      ownSaleDetail = `Most recent qualified sale (${latestSale.sell_date ?? "—"}) for $${latestSale.selling_price.toLocaleString()}.`;
+    }
   }
 
-  const variancePct =
-    fairValue && assessed
-      ? +(((assessed - fairValue) / fairValue) * 100).toFixed(1)
-      : row.variance_pct != null
-        ? Number(row.variance_pct)
-        : null;
+  const compPrices = nearbyComps
+    .map((c) => c.selling_price)
+    .filter((p) => p > 50_000);
+  const compMedian = compPrices.length ? median(compPrices) : null;
+  const compEstimate = compMedian != null ? roundDollars(compMedian) : null;
 
-  const gapDollars = fairValue != null ? assessed - fairValue : null;
+  const estimateLines: EstimateLine[] = [];
+
+  if (ownSaleEstimate != null) {
+    estimateLines.push({
+      method: "own_sale",
+      label: "This parcel's recent sale",
+      value: ownSaleEstimate,
+      confidence: saleAgeDays(latestSale?.sell_date ?? null) != null && saleAgeDays(latestSale!.sell_date)! < 730 ? "high" : "medium",
+      detail: ownSaleDetail,
+    });
+  }
+
+  if (compEstimate != null) {
+    estimateLines.push({
+      method: "comparable_sales",
+      label: `Nearby sales in ZIP ${zipEquity?.zip_code ?? attrs.ZIP ?? "—"}`,
+      value: compEstimate,
+      confidence: compPrices.length >= 5 ? "medium" : compPrices.length >= 3 ? "medium" : "low",
+      detail: `Median of ${compPrices.length} qualified sale${compPrices.length !== 1 ? "s" : ""} in the same ZIP with prices in a similar range to this assessment (Register of Deeds, since 2020).`,
+    });
+  }
+
+  if (gradientEstimate != null) {
+    estimateLines.push({
+      method: "gradient_model",
+      label: "Property characteristics model",
+      value: gradientEstimate,
+      confidence: "low",
+      detail: "Estimated from lot size, location premium, and property class benchmarks when parcel-specific sales are thin.",
+    });
+  }
+
+  let marketValue: number | null = null;
+  let marketMethod: ValuationDetail["market_estimate"]["method"] = "insufficient";
+  let marketConfidence: ValuationDetail["market_estimate"]["confidence"] = "low";
+  let marketMethodLabel = "Insufficient data";
+
+  const ownLine = estimateLines.find((e) => e.method === "own_sale");
+  const compLine = estimateLines.find((e) => e.method === "comparable_sales");
+  const gradLine = estimateLines.find((e) => e.method === "gradient_model");
+
+  if (ownLine?.value && ownLine.confidence === "high") {
+    marketValue = ownLine.value;
+    marketMethod = "own_sale";
+    marketConfidence = "high";
+    marketMethodLabel = "Recent qualified sale";
+  } else if (compLine?.value && compPrices.length >= 3) {
+    marketValue = compLine.value;
+    marketMethod = "comparable_sales";
+    marketConfidence = compPrices.length >= 5 ? "medium" : "low";
+    marketMethodLabel = "Nearby comparable sales";
+  } else if (ownLine?.value) {
+    marketValue = ownLine.value;
+    marketMethod = "own_sale";
+    marketConfidence = "medium";
+    marketMethodLabel = "Qualified sale (time-adjusted)";
+  } else if (compLine?.value) {
+    marketValue = compLine.value;
+    marketMethod = "comparable_sales";
+    marketConfidence = "low";
+    marketMethodLabel = "Limited comparable sales";
+  } else if (gradLine?.value) {
+    marketValue = gradLine.value;
+    marketMethod = "gradient_model";
+    marketConfidence = "low";
+    marketMethodLabel = "Characteristics model";
+  }
+
+  const rangeValues = estimateLines.map((e) => e.value).filter((v): v is number => v != null && v > 0);
+  const rangeLow = rangeValues.length ? roundDollars(Math.min(...rangeValues) * 0.92) : null;
+  const rangeHigh = rangeValues.length ? roundDollars(Math.max(...rangeValues) * 1.08) : null;
+
+  const parcelRatio =
+    latestSale && latestSale.selling_price > 0 && !isLandSale(assessed, latestSale.selling_price)
+      ? assessed / latestSale.selling_price
+      : null;
+
+  const parcelRatioVsZip =
+    parcelRatio != null && medianRatio != null
+      ? +((parcelRatio - medianRatio) * 100).toFixed(1)
+      : null;
+
+  const isCommercialContext = likelyCommercial(prc, ownerName) || zipEquity?.zip_code === "28801";
+
+  const equityDisclaimer =
+    "This applies the ZIP-wide median assessment-to-sale ratio to this parcel's assessment. " +
+    "It measures uniformity vs. neighbors in the equity study — not a property-specific market appraisal. " +
+    (isCommercialContext
+      ? "Mixed-use and downtown ZIPs blend commercial and residential sales; do not treat this as what the property would sell for."
+      : "Use comparable sales or a licensed appraisal for market value.");
+
+  const variancePct =
+    marketValue && assessed
+      ? +(((assessed - marketValue) / marketValue) * 100).toFixed(1)
+      : null;
+
+  const gapDollars = marketValue != null ? assessed - marketValue : null;
 
   let verdict: ValuationDetail["verdict"] = "unknown";
   if (variancePct != null) {
@@ -130,21 +276,21 @@ export function buildValuationDetail(
 
   const verdictLabel =
     verdict === "over_assessed"
-      ? "Over-assessed"
+      ? "Over-assessed vs. market estimate"
       : verdict === "under_assessed"
-        ? "Under-assessed"
+        ? "Under-assessed vs. market estimate"
         : verdict === "fair"
           ? "Within equity band"
           : "Insufficient data";
 
   const verdictSummary =
     verdict === "over_assessed" && gapDollars != null
-      ? `The county assessment is $${Math.abs(gapDollars).toLocaleString()} above our fair market estimate (${variancePct! > 0 ? "+" : ""}${variancePct}%).`
+      ? `County assessment is $${Math.abs(gapDollars).toLocaleString()} above our market estimate (${variancePct! > 0 ? "+" : ""}${variancePct}%) — based on comparable sales and parcel-specific data, not ZIP ratio extrapolation.`
       : verdict === "under_assessed" && gapDollars != null
-        ? `The county assessment is $${Math.abs(gapDollars).toLocaleString()} below our fair market estimate (${variancePct}%).`
+        ? `County assessment is $${Math.abs(gapDollars).toLocaleString()} below our market estimate (${variancePct}%).`
         : verdict === "fair"
-          ? "The county assessment is within ±15% of our fair market estimate."
-          : "Not enough sales or market data to produce a confident fair value.";
+          ? "County assessment is within ±15% of our market estimate (comps / own sale / characteristics model)."
+          : "Not enough parcel-specific sales data to compare assessment to market.";
 
   const steps: ValuationStep[] = [];
   let step = 1;
@@ -152,97 +298,122 @@ export function buildValuationDetail(
   if (prcAssessed) {
     steps.push({
       step: step++,
-      title: "Official Spatialest PRC appraisal",
-      source: "Buncombe County · Spatialest Property Record Card",
-      detail: prcIsCurrent
-        ? `Live county record shows $${prcAssessed.toLocaleString()} total appraised (${prc?.latest_value_year ?? "current"} tax year) — land $${(prc?.land_value ?? 0).toLocaleString()}, building $${(prc?.building_value ?? 0).toLocaleString()}.`
-        : `County PRC shows $${prcAssessed.toLocaleString()} total appraised. This replaces our older tax-roll snapshot when available.`,
+      title: "County appraised value",
+      source: "Buncombe County · Spatialest PRC",
+      detail: `Official record: $${prcAssessed.toLocaleString()} total appraised${prc?.latest_value_year ? ` (${prc.latest_value_year} tax year)` : ""}.`,
       result: prcAssessed,
       result_label: `$${prcAssessed.toLocaleString()}`,
     });
-    if (taxRollAssessed > 0 && prcAssessed !== taxRollAssessed) {
-      const delta = prcAssessed - taxRollAssessed;
-      steps.push({
-        step: step++,
-        title: "Tax roll vs. live PRC",
-        source: "ParcelIQ bulk import vs. Spatialest",
-        detail: `Our downloaded tax roll has $${taxRollAssessed.toLocaleString()}, but Spatialest PRC shows $${prcAssessed.toLocaleString()} (${delta > 0 ? "+" : ""}${delta.toLocaleString()}). Analysis uses the live PRC value.`,
-        result: delta,
-        result_label: `${delta > 0 ? "+" : ""}$${delta.toLocaleString()}`,
-      });
-    }
-  }
-
-  if (zipEquity && medianRatio) {
+  } else if (assessed > 0) {
     steps.push({
       step: step++,
-      title: "ZIP assessment-to-sale ratio",
-      source: "NC Register of Deeds · qualified sales since 2020",
-      detail: `In ${zipEquity.zip_name ?? zipEquity.zip_code}, Buncombe assessments average ${(medianRatio * 100).toFixed(1)}% of recent sale prices across ${zipEquity.sample_count} matched parcels.`,
-      result: medianRatio,
-      result_label: `${(medianRatio * 100).toFixed(1)}% of market`,
+      title: "County assessed value",
+      source: "Buncombe County tax roll",
+      detail: `Tax roll total value: $${assessed.toLocaleString()}.`,
+      result: assessed,
+      result_label: `$${assessed.toLocaleString()}`,
     });
   }
 
-  if (deedImpliedMarket && medianRatio && assessed > 0) {
+  if (ownLine) {
     steps.push({
       step: step++,
-      title: "Deed-implied market value (at last revaluation)",
-      source: "ParcelIQ deed-ratio model",
-      detail:
-        "Dividing the county assessment by the ZIP median ratio estimates what the property would sell for if the county's relative accuracy holds.",
-      formula: `$${assessed.toLocaleString()} ÷ ${medianRatio.toFixed(3)}`,
-      result: deedImpliedMarket,
-      result_label: `$${deedImpliedMarket.toLocaleString()}`,
-    });
-  }
-
-  if (marketIndex && appreciation && deedImpliedMarket && !prcIsCurrent) {
-    const pctUp = ((appreciation - 1) * 100).toFixed(1);
-    steps.push({
-      step: step++,
-      title: "Zillow metro appreciation adjustment",
-      source: marketIndex.source ?? "Zillow Research",
-      detail: `Since Buncombe's ${marketIndex.zhvi_base_date ?? "2021"} revaluation, Asheville metro ZHVI rose from $${Number(marketIndex.zhvi_base ?? 0).toLocaleString()} to $${Number(marketIndex.zhvi_current ?? 0).toLocaleString()} (+${pctUp}%). Median sale price: $${Number(marketIndex.median_sale_base ?? 0).toLocaleString()} → $${Number(marketIndex.median_sale_current ?? 0).toLocaleString()}.`,
-      formula: `$${deedImpliedMarket.toLocaleString()} × ${Number(appreciation).toFixed(4)}`,
-      result: zillowFair,
-      result_label: zillowFair ? `$${zillowFair.toLocaleString()}` : undefined,
-    });
-  }
-
-  if (sales.length > 0) {
-    const latest = sales[0];
-    const pinRatio =
-      latest.selling_price > 0 ? assessed / latest.selling_price : null;
-    const isLandSale = pinRatio != null && pinRatio >= 2;
-    steps.push({
-      step: step++,
-      title: "This parcel's most recent qualified sale",
+      title: "This parcel's qualified sale",
       source: "NC Register of Deeds",
-      detail: isLandSale
-        ? `Recorded ${latest.sell_date ?? "—"} for $${latest.selling_price.toLocaleString()} — likely a pre-construction land sale, not today's improved value.`
-        : `Recorded ${latest.sell_date ?? "—"} for $${latest.selling_price.toLocaleString()}. County assesses at ${pinRatio != null ? `${(pinRatio * 100).toFixed(1)}%` : "—"} of that sale price.`,
-      result: latest.selling_price,
-      result_label: `$${latest.selling_price.toLocaleString()}`,
+      detail: ownLine.detail,
+      result: ownLine.value,
+      result_label: ownLine.value ? `$${ownLine.value.toLocaleString()}` : undefined,
+    });
+  }
+
+  if (compLine && compPrices.length > 0) {
+    steps.push({
+      step: step++,
+      title: "Nearby comparable sales",
+      source: "NC Register of Deeds · same ZIP",
+      detail: compLine.detail,
+      result: compLine.value,
+      result_label: compLine.value ? `$${compLine.value.toLocaleString()}` : undefined,
+    });
+  }
+
+  if (gradLine) {
+    steps.push({
+      step: step++,
+      title: "Characteristics-based estimate",
+      source: "ParcelIQ gradient model",
+      detail: gradLine.detail,
+      result: gradLine.value,
+      result_label: gradLine.value ? `$${gradLine.value.toLocaleString()}` : undefined,
     });
   }
 
   steps.push({
     step: step++,
-    title: "ParcelIQ fair market value",
-    source:
-      primaryMethod === "zillow_adjusted"
-        ? "Deed ratio + Zillow metro appreciation"
-        : primaryMethod === "deed_ratio"
-          ? "Deed ratio by ZIP"
-          : "Gradient valuation model",
-    detail: verdictSummary,
-    result: fairValue,
-    result_label: fairValue ? `$${fairValue.toLocaleString()}` : undefined,
+    title: "Market estimate (headline)",
+    source: marketMethodLabel,
+    detail:
+      marketValue != null
+        ? `We prioritize this parcel's own sales, then nearby comps, then a characteristics model. We do not use ZIP-wide ratio extrapolation as market value. Confidence: ${marketConfidence}.`
+        : "Insufficient parcel-specific evidence for a market estimate.",
+    result: marketValue,
+    result_label: marketValue ? `$${marketValue.toLocaleString()}` : undefined,
   });
 
+  if (zipEquity && medianRatio) {
+    steps.push({
+      step: step++,
+      title: "ZIP equity context",
+      source: "NC Register of Deeds · qualified sales since 2020",
+      detail: `In ${zipEquity.zip_name ?? zipEquity.zip_code}, the median assessment-to-sale ratio is ${(medianRatio * 100).toFixed(1)}% across ${zipEquity.sample_count} matched parcels — used for uniformity analysis, not as this parcel's market value.`,
+      result: medianRatio,
+      result_label: `${(medianRatio * 100).toFixed(1)}% of sale price`,
+    });
+  }
+
+  if (deedExtrapolation && medianRatio) {
+    steps.push({
+      step: step++,
+      title: "ZIP ratio extrapolation (equity study only)",
+      source: "ParcelIQ uniformity metric",
+      detail: equityDisclaimer,
+      formula: `$${assessed.toLocaleString()} ÷ ${medianRatio.toFixed(3)}`,
+      result: deedExtrapolation,
+      result_label: `$${deedExtrapolation.toLocaleString()} — not a market appraisal`,
+    });
+  }
+
+  if (metroAdjustedExtrapolation && marketIndex && deedExtrapolation !== metroAdjustedExtrapolation) {
+    const pctUp = appreciation ? ((appreciation - 1) * 100).toFixed(1) : "0";
+    steps.push({
+      step: step++,
+      title: "Metro trend adjustment on extrapolation",
+      source: marketIndex.source ?? "Zillow Research · ZHVI index",
+      detail: `Asheville metro home values rose ~${pctUp}% since ${marketIndex.zhvi_base_date ?? "2021"} per ZHVI. Applied only to the equity extrapolation above — not to the headline market estimate. ZHVI is a regional index, not a Zestimate for this address.`,
+      formula: `$${deedExtrapolation!.toLocaleString()} × ${Number(appreciation).toFixed(4)}`,
+      result: metroAdjustedExtrapolation,
+      result_label: `$${metroAdjustedExtrapolation.toLocaleString()}`,
+    });
+  }
+
   return {
-    fair_market_value: fairValue,
+    fair_market_value: marketValue,
+    market_estimate: {
+      value: marketValue,
+      method: marketMethod,
+      method_label: marketMethodLabel,
+      confidence: marketConfidence,
+      range_low: rangeLow,
+      range_high: rangeHigh,
+      estimates: estimateLines,
+    },
+    equity_extrapolation: {
+      value: deedExtrapolation,
+      metro_adjusted_value: metroAdjustedExtrapolation,
+      zip_median_ratio: medianRatio,
+      parcel_ratio_vs_zip: parcelRatioVsZip,
+      disclaimer: equityDisclaimer,
+    },
     county_assessment: assessed,
     tax_roll_assessment: taxRollAssessed > 0 ? taxRollAssessed : null,
     prc_assessment: prcAssessed,
@@ -251,12 +422,13 @@ export function buildValuationDetail(
     verdict,
     verdict_label: verdictLabel,
     verdict_summary: verdictSummary,
-    primary_method: primaryMethod,
+    primary_method: marketMethod,
     steps,
     zip_equity: zipEquity,
     zillow: marketIndex,
     comparable_sales: sales,
-    model_breakdown: fairValue ? modelBreakdown(attrs, fairValue) : null,
+    nearby_comps: nearbyComps,
+    model_breakdown: marketValue ? modelBreakdown(attrs, marketValue) : null,
     prc,
   };
 }

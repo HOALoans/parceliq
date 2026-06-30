@@ -6,7 +6,7 @@ import {
   modelValue, modelBreakdown, equityScore,
   type ParcelAttrs,
 } from "./valuation.js";
-import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type MarketIndexRow } from "./valuationDetail.js";
+import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type MarketIndexRow, type NearbyComp } from "./valuationDetail.js";
 import { buildDataFreshness } from "./assessmentFreshness.js";
 import { loadPrcForParcel } from "./spatialestPrc.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
@@ -144,7 +144,8 @@ export const parceliqRouter = router({
       };
 
       const zip = enriched.POSTAL_CODE;
-      const [zipEquityRes, marketRes, salesRes, rodSyncRes] = await Promise.all([
+      const assessedForComps = Math.max(50_000, Number(row.total_value ?? 0));
+      const [zipEquityRes, marketRes, salesRes, compsRes, rodSyncRes] = await Promise.all([
         pool.query(
           "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
           [zip]
@@ -157,6 +158,24 @@ export const parceliqRouter = router({
            FROM parceliq_sales WHERE pin=$1 AND qualified=TRUE
            ORDER BY sell_date DESC LIMIT 5`,
           [String(row.pin)]
+        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+        pool.query(
+          `SELECT s.pin, s.address, s.sell_date, s.selling_price, p.total_value AS assessed
+           FROM parceliq_sales s
+           INNER JOIN parceliq_parcels p ON p.pin = s.pin
+           WHERE p.postal_code = $1
+             AND s.pin != $2
+             AND s.qualified = TRUE AND s.vacant_lot = FALSE
+             AND s.sell_date >= '2020-01-01' AND s.selling_price > 50000
+             AND s.selling_price BETWEEN $3 AND $4
+           ORDER BY s.sell_date DESC
+           LIMIT 12`,
+          [
+            zip,
+            String(row.pin),
+            Math.round(assessedForComps * 0.35),
+            Math.round(assessedForComps * 2.5),
+          ],
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
         pool.query(
           `SELECT finished_at FROM parceliq_ingest_runs
@@ -173,6 +192,14 @@ export const parceliqRouter = router({
         adj_price: s.adj_price != null ? Number(s.adj_price) : null,
         qualified: Boolean(s.qualified),
       })) as ComparableSale[];
+
+      const nearbyComps = compsRes.rows.map((c) => ({
+        pin: String(c.pin),
+        address: c.address != null ? String(c.address) : null,
+        sell_date: c.sell_date ? String(c.sell_date).slice(0, 10) : null,
+        selling_price: Number(c.selling_price),
+        assessed: c.assessed != null ? Number(c.assessed) : null,
+      })) as NearbyComp[];
 
       const valuation = buildValuationDetail(
         row,
@@ -197,6 +224,7 @@ export const parceliqRouter = router({
             }
           : null,
         sales,
+        nearbyComps,
         prc,
       );
 
