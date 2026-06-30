@@ -92,6 +92,26 @@ const formatAsOf = (value: string | null | undefined) => {
   return value;
 };
 
+/** Equity-study label: assessment vs qualified sales in the ZIP sample — not a market-appraisal verdict. */
+function zipEquityRatioStatus(ratio: number): { label: string; badgeClass: string } {
+  if (ratio > 1.1) {
+    return { label: "Above sale prices", badgeClass: "bg-red-100 text-red-800 border-red-200" };
+  }
+  if (ratio >= 0.88) {
+    return { label: "Near parity", badgeClass: "bg-green-100 text-green-800 border-green-200" };
+  }
+  if (ratio >= 0.75) {
+    return { label: "Below sale prices", badgeClass: "bg-amber-100 text-amber-800 border-amber-200" };
+  }
+  return { label: "Well below sales", badgeClass: "bg-amber-200 text-amber-900 border-amber-300" };
+}
+
+function equityRiskLabel(riskLevel: string): string {
+  if (riskLevel === "high") return "Low ratio";
+  if (riskLevel === "moderate") return "Moderate gap";
+  return "Near parity";
+}
+
 /** Plain-English summary of the headline market estimate (comps / own sale — not ZIP ratio). */
 function marketEstimateExplainer(v: Record<string, any> | undefined): string {
   const me = v?.market_estimate;
@@ -328,11 +348,13 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                 <TableHead>ZIP</TableHead>
                 <TableHead>Area</TableHead>
                 <TableHead className="text-right">Median Ratio</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>vs. sales sample</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {zipRatios.map((z) => (
+              {zipRatios.map((z) => {
+                const status = zipEquityRatioStatus(z.ratio);
+                return (
                 <TableRow key={z.zip} className="bg-white/60">
                   <TableCell>
                     <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-xs" />
@@ -342,12 +364,12 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                     {z.ratio.toFixed(3)}
                   </TableCell>
                   <TableCell>
-                    <Badge className="bg-amber-200 text-amber-900 border-amber-300">
-                      ⬇ Underassessed
+                    <Badge className={status.badgeClass}>
+                      {status.label}
                     </Badge>
                   </TableCell>
                 </TableRow>
-              ))}
+              );})}
             </TableBody>
           </Table>
         </CardContent>
@@ -1509,7 +1531,7 @@ function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                       Flagged %{sortIndicator("flagRatePct")}
                     </button>
                   </TableHead>
-                  <TableHead>Risk</TableHead>
+                  <TableHead>vs. sales sample</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1548,7 +1570,7 @@ function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                           : z.riskLevel === "moderate" ? "bg-amber-100 text-amber-800"
                             : "bg-green-100 text-green-800"
                       }>
-                        {z.riskLevel === "high" ? "High" : z.riskLevel === "moderate" ? "Moderate" : "Healthy"}
+                        {equityRiskLabel(z.riskLevel)}
                       </Badge>
                     </TableCell>
                   </TableRow>
