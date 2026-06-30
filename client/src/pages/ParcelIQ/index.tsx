@@ -35,6 +35,7 @@ import {
   TrendingUp, TrendingDown, RefreshCw, Plus, Info, ExternalLink,
   ArrowLeft,
 } from "lucide-react";
+import { Link } from "wouter";
 
 const COUNTY_ASSESSMENT_RATIO = 0.725;
 
@@ -475,9 +476,18 @@ export default function ParcelogikPage() {
               <span className="text-slate-400 font-sans text-sm font-normal">.com</span>
             </a>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Buncombe County, NC · Property Assessment Intelligence</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            <Link href="/" className="hover:text-slate-300">Parcelogik</Link>
+            {" · "}Buncombe County, NC
+          </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="hidden sm:inline-flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-3 h-3" /> All counties
+          </Link>
           <span className="flex items-center gap-1.5 text-xs bg-slate-800 text-green-400 px-3 py-1 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             Live · Buncombe GIS
