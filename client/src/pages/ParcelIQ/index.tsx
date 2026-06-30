@@ -1111,64 +1111,138 @@ function RevenueTab() {
 // ════════════════════════════════════════════════════════════════════════
 function EquityTab() {
   const { data, isLoading } = trpc.parceliq.equitySummary.useQuery();
+  type SortKey = "medianVariancePct" | "zip" | "parcelCount" | "medianRatio" | "flagRatePct";
+  const [sortKey, setSortKey] = useState<SortKey>("medianVariancePct");
+  const [sortAsc, setSortAsc] = useState(true);
+
+  const sortedZips = [...(data?.zipCodes ?? [])].sort((a, b) => {
+    const av = a[sortKey] as number | string;
+    const bv = b[sortKey] as number | string;
+    if (typeof av === "string" && typeof bv === "string") {
+      return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    }
+    return sortAsc ? Number(av) - Number(bv) : Number(bv) - Number(av);
+  });
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortAsc(!sortAsc);
+    else {
+      setSortKey(key);
+      setSortAsc(key === "medianVariancePct");
+    }
+  };
+
+  const sortIndicator = (key: SortKey) =>
+    sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
 
   return (
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Equity Analysis</h2>
-        <p className="text-sm text-muted-foreground">Systemic over/under-assessment patterns by zip code.</p>
+        <p className="text-sm text-muted-foreground">
+          Assessment-to-sale ratios by ZIP, from {data?.summary?.zipCount ?? "—"} Buncombe County zip codes
+          (NC Register of Deeds qualified sales).
+        </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: "Over-assessed",      value: "2,104", sub: ">15% above model", color: "border-t-red-500" },
-          { label: "Under-assessed",     value: "2,115", sub: ">15% below model", color: "border-t-amber-500" },
-          { label: "Within Equity Band", value: "108,628",sub: "Within ±15%",      color: "border-t-green-500" },
-        ].map((s) => (
-          <Card key={s.label} className={`border-t-4 ${s.color}`}>
-            <CardContent className="pt-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.label}</p>
-              <p className="text-2xl font-serif font-semibold mt-1">{s.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">{s.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {data?.summary && (
+        <Card className="border-2 border-amber-400 bg-amber-50/50">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Assessment equity spread</p>
+            <p className="text-2xl font-serif font-semibold mt-1 text-amber-950">
+              {data.summary.ratioSpreadPct} percentage point gap
+            </p>
+            <p className="text-sm text-amber-900 mt-2 leading-relaxed">
+              Between the highest and lowest assessed zip codes, the median assessment-to-sale ratio
+              varies by <strong>{data.summary.ratioSpreadPct} points</strong> — from{" "}
+              {(data.summary.minRatio * 100).toFixed(1)}% of market ({data.summary.minRatio.toFixed(3)}) to{" "}
+              {(data.summary.maxRatio * 100).toFixed(1)}% ({data.summary.maxRatio.toFixed(3)}).
+              Lower ratios mean assessments lag further below actual sale prices.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading && <p className="text-sm text-muted-foreground">Loading equity data…</p>}
 
-      <div className="space-y-3">
-        {data?.zipCodes.map((z) => (
-          <Card key={z.zip}>
-            <CardContent className="pt-4">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-serif text-lg font-semibold">{z.zip} — {z.name}</div>
-                  <div className="text-xs text-muted-foreground">{z.parcelCount} parcels sampled</div>
-                </div>
-                <Badge className={
-                  z.riskLevel === "high"     ? "bg-red-100 text-red-800"
-                  : z.riskLevel === "moderate" ? "bg-amber-100 text-amber-800"
-                  : "bg-green-100 text-green-800"
-                }>
-                  {z.riskLevel === "high" ? "High Risk" : z.riskLevel === "moderate" ? "Moderate" : "Healthy"}
-                </Badge>
-              </div>
-              <div className="grid grid-cols-4 gap-4 text-sm">
-                <div><div className="text-xs text-muted-foreground">Avg Assessment</div><div className="font-semibold">{fmt(z.avgAssessment)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Avg Model Value</div><div className="font-semibold">{fmt(z.avgModelValue)}</div></div>
-                <div>
-                  <div className="text-xs text-muted-foreground">Median Variance</div>
-                  <div className={`font-semibold ${z.medianVariancePct < -5 ? "text-red-600" : z.medianVariancePct > 5 ? "text-amber-600" : "text-green-600"}`}>
-                    {z.medianVariancePct > 0 ? "+" : ""}{z.medianVariancePct}%
-                  </div>
-                </div>
-                <div><div className="text-xs text-muted-foreground">Flagged</div><div className="font-semibold">{z.flagRatePct}% of zip</div></div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {!isLoading && data?.zipCodes.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          No ZIP equity data yet. Run <code className="font-mono text-xs">npm run sync:rod</code> to populate from deed sales.
+        </p>
+      )}
+
+      {sortedZips.length > 0 && (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>
+                    <button type="button" className="font-semibold hover:underline" onClick={() => toggleSort("zip")}>
+                      ZIP{sortIndicator("zip")}
+                    </button>
+                  </TableHead>
+                  <TableHead>Area</TableHead>
+                  <TableHead className="text-right">
+                    <button type="button" className="font-semibold hover:underline ml-auto" onClick={() => toggleSort("parcelCount")}>
+                      Samples{sortIndicator("parcelCount")}
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">Avg assessed</TableHead>
+                  <TableHead className="text-right">Implied market</TableHead>
+                  <TableHead className="text-right">
+                    <button type="button" className="font-semibold hover:underline ml-auto" onClick={() => toggleSort("medianRatio")}>
+                      Median ratio{sortIndicator("medianRatio")}
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button type="button" className="font-semibold hover:underline ml-auto" onClick={() => toggleSort("medianVariancePct")}>
+                      Variance{sortIndicator("medianVariancePct")}
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button type="button" className="font-semibold hover:underline ml-auto" onClick={() => toggleSort("flagRatePct")}>
+                      Flagged %{sortIndicator("flagRatePct")}
+                    </button>
+                  </TableHead>
+                  <TableHead>Risk</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sortedZips.map((z) => (
+                  <TableRow key={z.zip}>
+                    <TableCell className="font-mono text-sm">{z.zip}</TableCell>
+                    <TableCell className="text-sm max-w-[180px] truncate">{z.name}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{z.parcelCount.toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{fmt(z.avgAssessment)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{fmt(z.avgModelValue)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {(z.medianRatio * 100).toFixed(1)}%
+                    </TableCell>
+                    <TableCell className={`text-right font-mono text-sm font-semibold ${
+                      z.medianVariancePct < -15 ? "text-amber-700"
+                        : z.medianVariancePct > 15 ? "text-red-700"
+                          : "text-green-700"
+                    }`}>
+                      {z.medianVariancePct > 0 ? "+" : ""}{z.medianVariancePct}%
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-sm">{z.flagRatePct.toFixed(1)}%</TableCell>
+                    <TableCell>
+                      <Badge className={
+                        z.riskLevel === "high" ? "bg-red-100 text-red-800"
+                          : z.riskLevel === "moderate" ? "bg-amber-100 text-amber-800"
+                            : "bg-green-100 text-green-800"
+                      }>
+                        {z.riskLevel === "high" ? "High" : z.riskLevel === "moderate" ? "Moderate" : "Healthy"}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

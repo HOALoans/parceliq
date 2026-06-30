@@ -283,44 +283,63 @@ export const parceliqRouter = router({
     }),
 
   equitySummary: publicProcedure.query(async () => {
-    const { rows } = await pool.query(
-      "SELECT postal_code, total_value, acres FROM parceliq_parcels WHERE total_value > 0 ORDER BY RANDOM() LIMIT 500"
-    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
-
-    const buckets: Record<string, { name: string; items: { curr: number; mv: number; v: number }[]; flags: number }> = {
-      "28801": { name: "Downtown Asheville", items: [], flags: 0 },
-      "28803": { name: "Biltmore / South",   items: [], flags: 0 },
-      "28804": { name: "North Asheville",    items: [], flags: 0 },
-      "28805": { name: "East Asheville",     items: [], flags: 0 },
-      "28806": { name: "West Asheville",     items: [], flags: 0 },
-      "28711": { name: "Black Mountain",     items: [], flags: 0 },
+    const BUNCOMBE_ZIPS: Record<string, string> = {
+      "28701": "Alexander",
+      "28704": "Arden",
+      "28709": "Barnardsville",
+      "28711": "Black Mountain",
+      "28715": "Candler",
+      "28730": "Fairview",
+      "28732": "Fletcher",
+      "28748": "Leicester",
+      "28778": "Weaverville",
+      "28787": "Weaverville (North)",
+      "28801": "Downtown Asheville",
+      "28802": "Asheville (Central)",
+      "28803": "Biltmore / South Asheville",
+      "28804": "North Asheville",
+      "28805": "East Asheville",
+      "28806": "West Asheville",
+      "28813": "Asheville (PO Box)",
+      "28814": "Asheville (PO Box)",
+      "28815": "Asheville (PO Box)",
+      "28816": "Asheville (PO Box)",
     };
-    const keys = Object.keys(buckets);
 
-    rows.forEach((row, i) => {
-      const zk = (row.postal_code as string) in buckets
-        ? (row.postal_code as string)
-        : keys[i % keys.length];
-      const attrs: ParcelAttrs = { CALCACREAGE: Number(row.acres)||0.2, TOTALVALUE: Number(row.total_value), ZIP: zk };
-      const mv = modelValue(attrs) ?? 0;
-      const cv = Number(row.total_value ?? 0);
-      const v  = mv ? (cv - mv) / mv * 100 : 0;
-      buckets[zk].items.push({ curr: cv, mv, v });
-      if (Math.abs(v) > 15) buckets[zk].flags++;
-    });
+    const { rows } = await pool.query(`
+      SELECT zip_code, zip_name, median_ratio, sample_count,
+             avg_assessed, avg_sale_price, flag_rate_pct, risk_level
+      FROM parceliq_zip_equity
+      WHERE zip_code = ANY($1)
+      ORDER BY zip_code ASC
+    `, [Object.keys(BUNCOMBE_ZIPS)]);
 
-    const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const med = (arr: number[]) => { const s = [...arr].sort((a,b)=>a-b); return s[Math.floor(s.length/2)] ?? 0; };
+    const zipCodes = rows.map(r => ({
+      zip:                r.zip_code,
+      name:               BUNCOMBE_ZIPS[r.zip_code as string] || r.zip_name || r.zip_code,
+      parcelCount:        Number(r.sample_count),
+      avgAssessment:      Number(r.avg_assessed),
+      avgModelValue:      Math.round(Number(r.avg_assessed) / Number(r.median_ratio)),
+      medianVariancePct:  +(((1 / Number(r.median_ratio)) - 1) * -100).toFixed(1),
+      medianRatio:        Number(r.median_ratio),
+      flagCount:          Math.round(Number(r.sample_count) * Number(r.flag_rate_pct) / 100),
+      flagRatePct:        Number(r.flag_rate_pct),
+      riskLevel:          r.risk_level,
+    }));
+
+    const ratios = zipCodes.map(z => z.medianRatio).filter(r => r > 0);
+    const minRatio = Math.min(...ratios);
+    const maxRatio = Math.max(...ratios);
+    const spread = +((maxRatio - minRatio) * 100).toFixed(1);
+
     return {
-      zipCodes: Object.entries(buckets).map(([zip, b]) => {
-        const flagRate = b.items.length ? b.flags / b.items.length * 100 : 0;
-        return { zip, name: b.name, parcelCount: b.items.length,
-          avgAssessment: Math.round(avg(b.items.map(x => x.curr))),
-          avgModelValue: Math.round(avg(b.items.map(x => x.mv))),
-          medianVariancePct: +med(b.items.map(x => x.v)).toFixed(1),
-          flagCount: b.flags, flagRatePct: +flagRate.toFixed(1),
-          riskLevel: flagRate > 20 ? "high" : flagRate > 10 ? "moderate" : "healthy" };
-      }),
+      zipCodes,
+      summary: {
+        zipCount: zipCodes.length,
+        minRatio: +minRatio.toFixed(3),
+        maxRatio: +maxRatio.toFixed(3),
+        ratioSpreadPct: spread,
+      },
     };
   }),
 
