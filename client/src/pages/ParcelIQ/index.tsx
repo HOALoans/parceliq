@@ -1138,49 +1138,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
 
   return (
     <div className="space-y-5">
-      {/* 1. Warnings */}
-      {warnings.length > 0 && (
-        <div className="space-y-2">
-          {warnings.map((w) => (
-            <div
-              key={w.code}
-              className={`rounded-lg border px-4 py-3 text-sm ${
-                w.severity === "warning"
-                  ? "bg-amber-50 border-amber-300 text-amber-950"
-                  : "bg-blue-50 border-blue-200 text-blue-950"
-              }`}
-            >
-              <div className="flex items-start gap-2 font-semibold">
-                {w.severity === "warning" ? (
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                ) : (
-                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                )}
-                {w.title}
-              </div>
-              <p className="mt-1 text-xs leading-relaxed opacity-90">{w.detail}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 2. Headline valuation */}
-      {v?.verdict_label && (
-        <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
-          <div className="flex items-center gap-2 font-semibold">
-            {verdict === "over_assessed" ? (
-              <AlertTriangle className="w-4 h-4" />
-            ) : verdict === "under_assessed" ? (
-              <TrendingDown className="w-4 h-4" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4" />
-            )}
-            {v.verdict_label}
-          </div>
-          <p className="text-sm mt-1 opacity-90">{v.verdict_summary}</p>
-        </div>
-      )}
-
+      {/* Headline — three boxes first */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 p-4 text-center">
           <div className="text-xs text-blue-900 font-medium uppercase tracking-wide">County Assessment</div>
@@ -1224,13 +1182,53 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         </div>
       </div>
 
-      {/* 3. How market estimate is chosen (priority — not weighted) */}
+      {v?.verdict_label && (
+        <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
+          <div className="flex items-center gap-2 font-semibold">
+            {verdict === "over_assessed" ? (
+              <AlertTriangle className="w-4 h-4" />
+            ) : verdict === "under_assessed" ? (
+              <TrendingDown className="w-4 h-4" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4" />
+            )}
+            {v.verdict_label}
+          </div>
+          <p className="text-sm mt-1 opacity-90">{v.verdict_summary}</p>
+        </div>
+      )}
+
       <MarketEstimatePriorityPanel marketEst={marketEst} fairValue={fairValue} />
 
       {fairValue != null && (
         <p className="text-sm text-slate-600 leading-relaxed px-1">
           {marketEstimateExplainer(v)}
         </p>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="space-y-2">
+          {warnings.map((w) => (
+            <div
+              key={w.code}
+              className={`rounded-lg border px-4 py-3 text-sm ${
+                w.severity === "warning"
+                  ? "bg-amber-50 border-amber-300 text-amber-950"
+                  : "bg-blue-50 border-blue-200 text-blue-950"
+              }`}
+            >
+              <div className="flex items-start gap-2 font-semibold">
+                {w.severity === "warning" ? (
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                ) : (
+                  <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                )}
+                {w.title}
+              </div>
+              <p className="mt-1 text-xs leading-relaxed opacity-90">{w.detail}</p>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Supporting evidence */}
