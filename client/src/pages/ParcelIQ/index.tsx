@@ -159,6 +159,277 @@ function equityExtrapolationExplainer(v: Record<string, any> | undefined): strin
   );
 }
 
+const MARKET_METHOD_PRIORITY = [
+  { priority: 1, method: "own_sale", title: "This parcel's qualified sale", hint: "Strongest — a verified sale on this PIN" },
+  { priority: 2, method: "comparable_sales", title: "Nearby comparable sales", hint: "Median of qualified sales in the same ZIP" },
+  { priority: 3, method: "gradient_model", title: "Property characteristics", hint: "Fallback from lot, location, and class" },
+] as const;
+
+function ConfidenceBadge({ level }: { level: string }) {
+  const styles =
+    level === "high" ? "bg-green-100 text-green-800 border-green-200"
+      : level === "medium" ? "bg-amber-100 text-amber-800 border-amber-200"
+        : "bg-slate-100 text-slate-600 border-slate-200";
+  return (
+    <span className={`text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded border ${styles}`}>
+      {level} confidence
+    </span>
+  );
+}
+
+function MarketEstimatePriorityPanel({
+  marketEst,
+  fairValue,
+}: {
+  marketEst: Record<string, any> | undefined;
+  fairValue: number | null | undefined;
+}) {
+  const estimates: Array<Record<string, any>> = marketEst?.estimates ?? [];
+  const byMethod = Object.fromEntries(estimates.map((e) => [e.method, e]));
+
+  return (
+    <Card className="border-slate-300 bg-gradient-to-br from-slate-50 to-white">
+      <CardHeader className="py-3 px-4 pb-2">
+        <CardTitle className="text-sm font-semibold">How the market estimate is chosen</CardTitle>
+        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+          {marketEst?.selection_rule ?? marketEstimateExplainer({ market_estimate: marketEst, fair_market_value: fairValue })}
+        </p>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-2">
+        {MARKET_METHOD_PRIORITY.map(({ priority, method, title, hint }) => {
+          const line = byMethod[method];
+          const selected = line?.selected === true;
+          return (
+            <div
+              key={method}
+              className={`relative flex items-start gap-3 rounded-lg border px-3 py-3 transition-colors ${
+                selected
+                  ? "border-slate-800 bg-slate-900 text-white shadow-md"
+                  : line
+                    ? "border-slate-200 bg-white"
+                    : "border-dashed border-slate-200 bg-slate-50/50 opacity-60"
+              }`}
+            >
+              <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                selected ? "bg-amber-400 text-slate-900" : "bg-slate-200 text-slate-600"
+              }`}>
+                {selected ? "✓" : priority}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`text-sm font-semibold ${selected ? "text-white" : "text-slate-900"}`}>{title}</span>
+                  {selected && (
+                    <span className="text-[10px] uppercase tracking-wide bg-amber-400 text-slate-900 px-2 py-0.5 rounded font-bold">
+                      Used for headline
+                    </span>
+                  )}
+                  {line && !selected && (
+                    <span className="text-[10px] text-muted-foreground">available — lower priority</span>
+                  )}
+                  {!line && (
+                    <span className="text-[10px] text-muted-foreground">not available</span>
+                  )}
+                </div>
+                <p className={`text-xs mt-0.5 ${selected ? "text-slate-300" : "text-muted-foreground"}`}>{hint}</p>
+                {line && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className={`font-serif text-lg font-semibold ${selected ? "text-amber-300" : "text-slate-800"}`}>
+                      {fmt(line.value)}
+                    </span>
+                    <ConfidenceBadge level={line.confidence} />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {marketEst?.range_low != null && marketEst?.range_high != null && (
+          <p className="text-xs text-muted-foreground pt-2 border-t">
+            Sensitivity range across available methods: {fmt(marketEst.range_low)}–{fmt(marketEst.range_high)}
+            {" "}(not a weighted blend).
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ValuationTimeline({ steps }: { steps: Array<Record<string, any>> }) {
+  if (!steps?.length) return null;
+
+  const marketSteps = steps.filter((s) => (s.kind ?? "market") === "market");
+  const contextSteps = steps.filter((s) => s.kind === "context");
+  const inputSteps = steps.filter((s) => s.kind === "input");
+
+  const renderStep = (step: Record<string, any>, lineColor: string, dotBorder: string) => (
+    <div key={step.step} className="relative pl-8 pb-6 last:pb-0">
+      <div className={`absolute left-[11px] top-7 bottom-0 w-0.5 ${lineColor}`} />
+      <div className={`absolute left-0 top-0.5 h-6 w-6 rounded-full border-2 ${dotBorder} bg-white flex items-center justify-center text-[10px] font-bold text-slate-700`}>
+        {step.step}
+      </div>
+      <div className="rounded-lg border bg-white p-3 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{step.source}</p>
+          </div>
+          {step.result_label && (
+            <p className="font-mono text-sm font-semibold text-slate-800 shrink-0">{step.result_label}</p>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-2 leading-relaxed">{step.detail}</p>
+        {step.formula && (
+          <p className="text-xs font-mono bg-slate-50 border rounded px-2 py-1 mt-2 inline-block">{step.formula}</p>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      {inputSteps.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">County record</p>
+          <div className="relative">{inputSteps.map((s) => renderStep(s, "bg-slate-200", "border-slate-400"))}</div>
+        </div>
+      )}
+      {marketSteps.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-3">Market estimate path</p>
+          <div className="relative">{marketSteps.map((s) => renderStep(s, "bg-slate-300", "border-slate-800"))}</div>
+        </div>
+      )}
+      {contextSteps.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-3">Equity context (not used for headline)</p>
+          <div className="relative">{contextSteps.map((s) => renderStep(s, "bg-amber-200", "border-amber-500"))}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DataFreshnessPanel({ freshness }: { freshness: Record<string, any> }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="font-semibold text-slate-800">Data sources &amp; freshness</div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {freshness.prc_connected
+              ? "Live Spatialest PRC data is incorporated into this analysis."
+              : "Bulk tax roll data — live PRC fetch unavailable for this parcel."}
+          </p>
+        </div>
+        {freshness.prc_url && (
+          <a
+            href={freshness.prc_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 shrink-0 text-xs font-medium text-slate-700 border border-slate-300 bg-white rounded-md px-2.5 py-1.5 hover:bg-slate-100"
+          >
+            Spatialest PRC <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+        {[
+          ["County assessment", formatAsOf(freshness.prc_as_of ?? freshness.assessment_as_of), freshness.assessment_source],
+          ["Register of Deeds sales", formatAsOf(freshness.sales_data_as_of), "Qualified sales sync"],
+          ["ZIP equity ratios", formatAsOf(freshness.zip_equity_as_of), "Uniformity study by ZIP"],
+          ["Zillow metro index", formatAsOf(freshness.zillow_as_of), "Regional trend (ZHVI)"],
+          ["Deed on file", formatAsOf(freshness.deed_date), freshness.levy_year ? `Levy year ${freshness.levy_year}` : "—"],
+        ].map(([label, asOf, sub]) => (
+          <div key={label} className="bg-white rounded border px-2.5 py-2">
+            <div className="text-muted-foreground">{label}</div>
+            <div className="font-medium text-slate-800 mt-0.5">As of {asOf}</div>
+            <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{sub}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PrcRecordCard({ prc, taxRollAssessment }: { prc: Record<string, any>; taxRollAssessment?: number | null }) {
+  return (
+    <Card className="border-2 border-blue-300 bg-blue-50/30">
+      <CardHeader className="py-3 px-4 pb-1">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Building2 className="w-4 h-4 text-blue-800" />
+          Buncombe Spatialest PRC · Official County Record
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-4">
+        <div className="grid grid-cols-3 gap-3 text-sm">
+          <div className="rounded border bg-white p-3 text-center">
+            <div className="text-xs text-muted-foreground">Land</div>
+            <div className="font-serif font-semibold mt-1">{fmt(prc.land_value)}</div>
+          </div>
+          <div className="rounded border bg-white p-3 text-center">
+            <div className="text-xs text-muted-foreground">Building</div>
+            <div className="font-serif font-semibold mt-1">{fmt(prc.building_value)}</div>
+          </div>
+          <div className="rounded border-2 border-blue-400 bg-white p-3 text-center">
+            <div className="text-xs text-blue-800 font-medium">Total Appraised</div>
+            <div className="font-serif font-semibold mt-1 text-lg">{fmt(prc.total_appraised)}</div>
+            {prc.latest_value_year && (
+              <div className="text-[10px] text-muted-foreground mt-1">{prc.latest_value_year} tax year</div>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+          {[
+            ["Zoning", prc.zoning],
+            ["Land use", prc.land_use],
+            ["Neighborhood", prc.neighborhood],
+            ["Deed date", prc.deed_date ? fmtDate(prc.deed_date) : "—"],
+            ["Year built", prc.building?.year_built ?? "—"],
+            ["Living area", prc.building?.sqft ? `${Number(prc.building.sqft).toLocaleString()} sqft` : "—"],
+            ["Beds / baths", prc.building?.bedrooms
+              ? `${prc.building.bedrooms} bed · ${prc.building.full_bath ?? 0}${prc.building.half_bath ? `/${prc.building.half_bath}` : ""} bath`
+              : "—"],
+            ["Style", prc.building?.building_type ?? "—"],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-white rounded border px-2 py-1.5">
+              <div className="text-muted-foreground">{label}</div>
+              <div className="font-medium truncate">{fmtCell(value)}</div>
+            </div>
+          ))}
+        </div>
+        {taxRollAssessment != null && taxRollAssessment !== prc.total_appraised && (
+          <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            Bulk tax roll snapshot: {fmt(taxRollAssessment)} — superseded by live PRC {fmt(prc.total_appraised)} in this analysis.
+          </p>
+        )}
+        {prc.value_history?.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Value change history</p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {prc.value_history.slice(-4).map((h: Record<string, any>, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-xs">{fmtDate(h.date)}</TableCell>
+                    <TableCell className="text-xs">{h.description}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">{fmt(h.total_value)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function VarianceBadge({ pct }: { pct: number | null }) {
   if (pct == null) return <Badge variant="outline">—</Badge>;
   const abs = Math.abs(pct);
@@ -867,48 +1138,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
 
   return (
     <div className="space-y-5">
-      {/* Data provenance */}
-      {freshness && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-semibold text-slate-800">Data sources &amp; freshness</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {freshness.prc_connected
-                  ? "Live Spatialest PRC data is incorporated into this analysis."
-                  : "Bulk tax roll data — live PRC fetch unavailable for this parcel."}
-              </p>
-            </div>
-            {freshness.prc_url && (
-              <a
-                href={freshness.prc_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 shrink-0 text-xs font-medium text-slate-700 border border-slate-300 bg-white rounded-md px-2.5 py-1.5 hover:bg-slate-100"
-              >
-                Spatialest PRC <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-            {[
-              ["County assessment", formatAsOf(freshness.prc_as_of ?? freshness.assessment_as_of), freshness.assessment_source],
-              ["Register of Deeds sales", formatAsOf(freshness.sales_data_as_of), "Qualified sales sync"],
-              ["ZIP equity ratios", formatAsOf(freshness.zip_equity_as_of), "Uniformity study by ZIP"],
-              ["Zillow metro index", formatAsOf(freshness.zillow_as_of), "Regional trend (ZHVI)"],
-              ["Deed on file", formatAsOf(freshness.deed_date), freshness.levy_year ? `Levy year ${freshness.levy_year}` : "—"],
-            ].map(([label, asOf, sub]) => (
-              <div key={label} className="bg-white rounded border px-2.5 py-2">
-                <div className="text-muted-foreground">{label}</div>
-                <div className="font-medium text-slate-800 mt-0.5">As of {asOf}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{sub}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Stale / mismatch warnings */}
+      {/* 1. Warnings */}
       {warnings.length > 0 && (
         <div className="space-y-2">
           {warnings.map((w) => (
@@ -934,102 +1164,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         </div>
       )}
 
-      {/* Property facts */}
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        {[
-          ["PIN", data.PIN],
-          ["Class", data.CLASSCD],
-          ["Acres", data.CALCACREAGE != null ? (+data.CALCACREAGE).toFixed(3) + " ac" : "—"],
-          ["ZIP", data.POSTAL_CODE],
-          ["Owner", data.OWNER],
-          ["City", data.CITY ?? "—"],
-        ].map(([label, value]) => (
-          <div key={label} className="bg-neutral-50 rounded p-3">
-            <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-            <div className="font-medium mt-0.5 truncate">{fmtCell(value)}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Spatialest PRC — live county record */}
-      {prc && (
-        <Card className="border-2 border-blue-300 bg-blue-50/30">
-          <CardHeader className="py-3 px-4 pb-1">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-blue-800" />
-              Buncombe Spatialest PRC · Official County Record
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-4">
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              <div className="rounded border bg-white p-3 text-center">
-                <div className="text-xs text-muted-foreground">Land</div>
-                <div className="font-serif font-semibold mt-1">{fmt(prc.land_value)}</div>
-              </div>
-              <div className="rounded border bg-white p-3 text-center">
-                <div className="text-xs text-muted-foreground">Building</div>
-                <div className="font-serif font-semibold mt-1">{fmt(prc.building_value)}</div>
-              </div>
-              <div className="rounded border-2 border-blue-400 bg-white p-3 text-center">
-                <div className="text-xs text-blue-800 font-medium">Total Appraised</div>
-                <div className="font-serif font-semibold mt-1 text-lg">{fmt(prc.total_appraised)}</div>
-                {prc.latest_value_year && (
-                  <div className="text-[10px] text-muted-foreground mt-1">{prc.latest_value_year} tax year</div>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              {[
-                ["Zoning", prc.zoning],
-                ["Land use", prc.land_use],
-                ["Neighborhood", prc.neighborhood],
-                ["Deed date", prc.deed_date ? fmtDate(prc.deed_date) : "—"],
-                ["Year built", prc.building?.year_built ?? "—"],
-                ["Living area", prc.building?.sqft ? `${Number(prc.building.sqft).toLocaleString()} sqft` : "—"],
-                ["Beds / baths", prc.building?.bedrooms
-                  ? `${prc.building.bedrooms} bed · ${prc.building.full_bath ?? 0}${prc.building.half_bath ? `/${prc.building.half_bath}` : ""} bath`
-                  : "—"],
-                ["Style", prc.building?.building_type ?? "—"],
-              ].map(([label, value]) => (
-                <div key={label} className="bg-white rounded border px-2 py-1.5">
-                  <div className="text-muted-foreground">{label}</div>
-                  <div className="font-medium truncate">{fmtCell(value)}</div>
-                </div>
-              ))}
-            </div>
-            {v?.tax_roll_assessment != null && v.tax_roll_assessment !== prc.total_appraised && (
-              <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                Bulk tax roll snapshot: {fmt(v.tax_roll_assessment)} — superseded by live PRC {fmt(prc.total_appraised)} in this analysis.
-              </p>
-            )}
-            {prc.value_history?.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Value change history</p>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Event</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {prc.value_history.slice(-4).map((h: Record<string, any>, i: number) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-xs">{fmtDate(h.date)}</TableCell>
-                        <TableCell className="text-xs">{h.description}</TableCell>
-                        <TableCell className="text-right font-mono text-xs">{fmt(h.total_value)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Verdict */}
+      {/* 2. Headline valuation */}
       {v?.verdict_label && (
         <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
           <div className="flex items-center gap-2 font-semibold">
@@ -1046,11 +1181,10 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         </div>
       )}
 
-      {/* Value comparison */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded border p-3 text-center">
-          <div className="text-xs text-muted-foreground">County Assessment</div>
-          <div className="text-xl font-serif font-semibold mt-1">{fmt(assessed)}</div>
+        <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 p-4 text-center">
+          <div className="text-xs text-blue-900 font-medium uppercase tracking-wide">County Assessment</div>
+          <div className="text-2xl font-serif font-semibold mt-1 text-blue-950">{fmt(assessed)}</div>
           <div className="text-[10px] text-muted-foreground mt-1">
             {prc ? "Spatialest PRC (live)" : "Tax roll snapshot"}
           </div>
@@ -1058,24 +1192,28 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
             <div className="text-[10px] text-amber-700 mt-0.5">Roll: {fmt(taxRoll)}</div>
           )}
         </div>
-        <div className="rounded border-2 border-slate-800 p-3 text-center bg-slate-50">
-          <div className="text-xs text-slate-600 font-medium">Market Estimate</div>
-          <div className="text-xl font-serif font-semibold mt-1 text-slate-900">{fmt(fairValue)}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">
+        <div className="rounded-lg border-2 border-slate-800 p-4 text-center bg-slate-900 text-white shadow-lg">
+          <div className="text-xs text-amber-300 font-medium uppercase tracking-wide">Market Estimate</div>
+          <div className="text-2xl font-serif font-semibold mt-1">{fmt(fairValue)}</div>
+          <div className="text-[10px] text-slate-300 mt-1">
             {marketEst?.method_label ?? "Parcel-specific evidence"}
             {marketEst?.confidence && (
-              <span className="ml-1">· {marketEst.confidence} confidence</span>
+              <span> · {marketEst.confidence} confidence</span>
             )}
           </div>
           {marketEst?.range_low != null && marketEst?.range_high != null && fairValue != null && (
-            <div className="text-[10px] text-slate-600 mt-1">
+            <div className="text-[10px] text-slate-400 mt-1">
               Range: {fmt(marketEst.range_low)}–{fmt(marketEst.range_high)}
             </div>
           )}
         </div>
-        <div className={`rounded border p-3 text-center ${Math.abs(varPct ?? 0) > 15 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
-          <div className="text-xs text-muted-foreground">vs. Market Estimate</div>
-          <div className={`text-xl font-serif font-semibold mt-1 ${Math.abs(varPct ?? 0) > 15 ? "text-red-700" : "text-green-700"}`}>
+        <div className={`rounded-lg border-2 p-4 text-center ${
+          Math.abs(varPct ?? 0) > 15 ? "bg-red-50 border-red-300" : "bg-green-50 border-green-300"
+        }`}>
+          <div className="text-xs text-muted-foreground uppercase tracking-wide">vs. Market Estimate</div>
+          <div className={`text-2xl font-serif font-semibold mt-1 ${
+            Math.abs(varPct ?? 0) > 15 ? "text-red-700" : "text-green-700"
+          }`}>
             {varPct != null ? `${varPct > 0 ? "+" : ""}${varPct}%` : "—"}
           </div>
           {v?.gap_dollars != null && (
@@ -1086,112 +1224,49 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         </div>
       </div>
 
-      {/* Market estimate methodology */}
+      {/* 3. How market estimate is chosen (priority — not weighted) */}
+      <MarketEstimatePriorityPanel marketEst={marketEst} fairValue={fairValue} />
+
       {fairValue != null && (
-        <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">
-            How we estimate market value
-          </p>
-          <p className="text-sm text-slate-700 leading-relaxed">
-            {marketEstimateExplainer(v)}
-          </p>
-        </div>
+        <p className="text-sm text-slate-600 leading-relaxed px-1">
+          {marketEstimateExplainer(v)}
+        </p>
       )}
 
-      {/* ZIP equity extrapolation — separate from market value */}
-      {equityExtrap != null && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50/60 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
-            ZIP equity extrapolation (uniformity metric only)
-          </p>
-          <div className="flex flex-wrap items-baseline gap-3 mb-2">
-            <span className="text-2xl font-serif font-semibold text-amber-950">{fmt(equityExtrap)}</span>
-            {v?.equity_extrapolation?.metro_adjusted_value != null &&
-              v.equity_extrapolation.metro_adjusted_value !== equityExtrap && (
-              <span className="text-sm text-amber-800">
-                Metro-adjusted: {fmt(v.equity_extrapolation.metro_adjusted_value)}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-amber-950/90 leading-relaxed">
-            {equityExtrapolationExplainer(v)}
-          </p>
-        </div>
-      )}
-
-      {/* Derivation steps */}
-      {v?.steps?.length > 0 && (
-        <div className="space-y-3">
+      {/* Supporting evidence */}
+      {v?.comparable_sales?.length > 0 && (
+        <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Calculation steps
+            This parcel&apos;s qualified sales
           </p>
-          {v.steps.map((step: Record<string, any>) => (
-            <div key={step.step} className="rounded-lg border bg-white p-3 space-y-1">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">
-                    {step.step}. {step.title}
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">{step.source}</div>
-                </div>
-                {step.result_label && (
-                  <div className="font-mono text-sm font-semibold text-slate-800 shrink-0">
-                    {step.result_label}
-                  </div>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">{step.detail}</p>
-              {step.formula && (
-                <p className="text-xs font-mono bg-neutral-50 rounded px-2 py-1 inline-block">
-                  {step.formula}
-                </p>
-              )}
-            </div>
-          ))}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Sale Date</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-right">vs Assessment</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {v.comparable_sales.map((sale: Record<string, any>, i: number) => {
+                const ratio = assessed && sale.selling_price
+                  ? (assessed / sale.selling_price) * 100
+                  : null;
+                return (
+                  <TableRow key={i}>
+                    <TableCell className="text-sm">{fmtDate(sale.sell_date)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{fmt(sale.selling_price)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      {ratio != null ? `${ratio.toFixed(1)}%` : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 
-      {/* Zillow metro data — context only */}
-      {v?.zillow && (
-        <Card className="border-blue-200 bg-blue-50/40">
-          <CardHeader className="py-3 px-4 pb-1">
-            <CardTitle className="text-sm font-semibold">Metro Price Trend · {v.zillow.metro_name}</CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3 text-sm">
-            <p className="text-xs text-blue-900 leading-relaxed">
-              ZHVI is Zillow's <strong>regional home-value index</strong>, not a Zestimate for this address.
-              We use it only to time-adjust old sales or the equity extrapolation — not as the headline market estimate.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs text-muted-foreground">ZHVI (home value index)</div>
-              <div className="font-medium">
-                ${Number(v.zillow.zhvi_base ?? 0).toLocaleString()} → ${Number(v.zillow.zhvi_current ?? 0).toLocaleString()}
-              </div>
-              <div className="text-[11px] text-muted-foreground">Base: {fmtDate(v.zillow.zhvi_base_date) || "2021"}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Median sale price</div>
-              <div className="font-medium">
-                ${Number(v.zillow.median_sale_base ?? 0).toLocaleString()} → ${Number(v.zillow.median_sale_current ?? 0).toLocaleString()}
-              </div>
-              <div className="text-[11px] text-muted-foreground">As of {fmtDate(v.zillow.as_of_date)}</div>
-            </div>
-            <div className="col-span-2">
-              <div className="text-xs text-muted-foreground">ZHVI appreciation since revaluation base</div>
-              <div className="font-mono font-semibold">
-                {Number(v.zillow.appreciation_factor).toFixed(4)}×
-                <span className="text-muted-foreground font-normal ml-2">
-                  (+{((Number(v.zillow.appreciation_factor) - 1) * 100).toFixed(1)}%)
-                </span>
-              </div>
-            </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Nearby comparable sales used for market estimate */}
       {v?.nearby_comps?.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1220,7 +1295,62 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         </div>
       )}
 
-      {/* ZIP equity context */}
+      {equityExtrap != null && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50/60 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
+            ZIP equity extrapolation (uniformity only — not the market estimate)
+          </p>
+          <div className="flex flex-wrap items-baseline gap-3 mb-2">
+            <span className="text-2xl font-serif font-semibold text-amber-950">{fmt(equityExtrap)}</span>
+            {v?.equity_extrapolation?.metro_adjusted_value != null &&
+              v.equity_extrapolation.metro_adjusted_value !== equityExtrap && (
+              <span className="text-sm text-amber-800">
+                Metro-adjusted: {fmt(v.equity_extrapolation.metro_adjusted_value)}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-amber-950/90 leading-relaxed">{equityExtrapolationExplainer(v)}</p>
+        </div>
+      )}
+
+      {/* Property facts */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+        {[
+          ["PIN", data.PIN],
+          ["Owner", data.OWNER],
+          ["ZIP", data.POSTAL_CODE],
+          ["Class", data.CLASSCD],
+          ["Acres", data.CALCACREAGE != null ? (+data.CALCACREAGE).toFixed(3) + " ac" : "—"],
+          ["City", data.CITY ?? "—"],
+        ].map(([label, value]) => (
+          <div key={label} className="bg-neutral-50 rounded border px-3 py-2">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</div>
+            <div className="font-medium mt-0.5 truncate text-sm">{fmtCell(value)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 4. PRC official record */}
+      {prc && <PrcRecordCard prc={prc} taxRollAssessment={v?.tax_roll_assessment} />}
+
+      {/* 5. Data sources */}
+      {freshness && <DataFreshnessPanel freshness={freshness} />}
+
+      {/* 6. Calculation timeline */}
+      {v?.steps?.length > 0 && (
+        <Card>
+          <CardHeader className="py-3 px-4 pb-2">
+            <CardTitle className="text-sm font-semibold">Valuation timeline</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Step-by-step record of inputs, the market estimate path, and equity context shown separately.
+            </p>
+          </CardHeader>
+          <CardContent className="px-4 pb-5">
+            <ValuationTimeline steps={v.steps} />
+          </CardContent>
+        </Card>
+      )}
+
       {v?.zip_equity && (
         <Card className="border-amber-200">
           <CardHeader className="py-3 px-4 pb-1">
@@ -1230,70 +1360,60 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-2 text-sm">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Median assessment-to-sale ratio for this ZIP from {v.zip_equity.sample_count} matched deed sales.
-              Used for county-wide uniformity analysis — not substituted for the market estimate above.
+              Median assessment-to-sale ratio from {v.zip_equity.sample_count} matched deed sales — uniformity analysis only.
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <div className="text-xs text-muted-foreground">Median ratio</div>
-              <div className="font-mono font-semibold">{Number(v.zip_equity.median_ratio).toFixed(3)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Sales samples</div>
-              <div className="font-semibold">{v.zip_equity.sample_count}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Avg assessed</div>
-              <div className="font-semibold">{fmt(v.zip_equity.avg_assessed)}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Avg sale price</div>
-              <div className="font-semibold">{fmt(v.zip_equity.avg_sale_price)}</div>
-            </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Median ratio</div>
+                <div className="font-mono font-semibold">{Number(v.zip_equity.median_ratio).toFixed(3)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Samples</div>
+                <div className="font-semibold">{v.zip_equity.sample_count}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Avg assessed</div>
+                <div className="font-semibold">{fmt(v.zip_equity.avg_assessed)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Avg sale</div>
+                <div className="font-semibold">{fmt(v.zip_equity.avg_sale_price)}</div>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Comparable sales for this parcel */}
-      {v?.comparable_sales?.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Register of Deeds · sales for this parcel
-          </p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Sale Date</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">vs Assessment</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {v.comparable_sales.map((sale: Record<string, any>, i: number) => {
-                const ratio = assessed && sale.selling_price
-                  ? (assessed / sale.selling_price) * 100
-                  : null;
-                return (
-                  <TableRow key={i}>
-                    <TableCell className="text-sm">{fmtDate(sale.sell_date)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {fmt(sale.selling_price)}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {ratio != null ? `${ratio.toFixed(1)}%` : "—"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+      {v?.zillow && (
+        <Card className="border-blue-200 bg-blue-50/40">
+          <CardHeader className="py-3 px-4 pb-1">
+            <CardTitle className="text-sm font-semibold">Metro price trend · {v.zillow.metro_name}</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3 text-sm">
+            <p className="text-xs text-blue-900 leading-relaxed">
+              ZHVI is a regional index — not a Zestimate for this address. Used only for time-adjusting old sales or equity extrapolation.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-muted-foreground">ZHVI</div>
+                <div className="font-medium">
+                  ${Number(v.zillow.zhvi_base ?? 0).toLocaleString()} → ${Number(v.zillow.zhvi_current ?? 0).toLocaleString()}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Median sale</div>
+                <div className="font-medium">
+                  ${Number(v.zillow.median_sale_base ?? 0).toLocaleString()} → ${Number(v.zillow.median_sale_current ?? 0).toLocaleString()}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {!v?.zillow && !v?.zip_equity && (
         <p className="text-xs text-muted-foreground bg-neutral-50 rounded p-3">
-          Run <code className="font-mono">npm run sync:rod</code> to populate deed sales and ZIP equity ratios for uniformity analysis.
+          Run <code className="font-mono">npm run sync:rod</code> to populate deed sales and ZIP equity ratios.
         </p>
       )}
     </div>

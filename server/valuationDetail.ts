@@ -45,6 +45,8 @@ export type ValuationStep = {
   formula?: string;
   result: number | null;
   result_label?: string;
+  /** input = county record; market = feeds headline estimate; context = equity / metro only */
+  kind: "input" | "market" | "context";
 };
 
 export type EstimateLine = {
@@ -53,6 +55,8 @@ export type EstimateLine = {
   value: number | null;
   confidence: "high" | "medium" | "low";
   detail: string;
+  priority: number;
+  selected: boolean;
 };
 
 export type ValuationDetail = {
@@ -66,6 +70,7 @@ export type ValuationDetail = {
     range_low: number | null;
     range_high: number | null;
     estimates: EstimateLine[];
+    selection_rule: string;
   };
   /** ZIP sales-ratio study extrapolation — equity uniformity only, not a market appraisal. */
   equity_extrapolation: {
@@ -178,6 +183,8 @@ export function buildValuationDetail(
       value: ownSaleEstimate,
       confidence: saleAgeDays(latestSale?.sell_date ?? null) != null && saleAgeDays(latestSale!.sell_date)! < 730 ? "high" : "medium",
       detail: ownSaleDetail,
+      priority: 1,
+      selected: false,
     });
   }
 
@@ -188,6 +195,8 @@ export function buildValuationDetail(
       value: compEstimate,
       confidence: compPrices.length >= 5 ? "medium" : compPrices.length >= 3 ? "medium" : "low",
       detail: `Median of ${compPrices.length} qualified sale${compPrices.length !== 1 ? "s" : ""} in the same ZIP with prices in a similar range to this assessment (Register of Deeds, since 2020).`,
+      priority: 2,
+      selected: false,
     });
   }
 
@@ -198,6 +207,8 @@ export function buildValuationDetail(
       value: gradientEstimate,
       confidence: "low",
       detail: "Estimated from lot size, location premium, and property class benchmarks when parcel-specific sales are thin.",
+      priority: 3,
+      selected: false,
     });
   }
 
@@ -240,6 +251,10 @@ export function buildValuationDetail(
   const rangeValues = estimateLines.map((e) => e.value).filter((v): v is number => v != null && v > 0);
   const rangeLow = rangeValues.length ? roundDollars(Math.min(...rangeValues) * 0.92) : null;
   const rangeHigh = rangeValues.length ? roundDollars(Math.max(...rangeValues) * 1.08) : null;
+
+  for (const line of estimateLines) {
+    line.selected = line.method === marketMethod;
+  }
 
   const parcelRatio =
     latestSale && latestSale.selling_price > 0 && !isLandSale(assessed, latestSale.selling_price)
@@ -303,6 +318,7 @@ export function buildValuationDetail(
       detail: `Official record: $${prcAssessed.toLocaleString()} total appraised${prc?.latest_value_year ? ` (${prc.latest_value_year} tax year)` : ""}.`,
       result: prcAssessed,
       result_label: `$${prcAssessed.toLocaleString()}`,
+      kind: "input",
     });
   } else if (assessed > 0) {
     steps.push({
@@ -312,6 +328,7 @@ export function buildValuationDetail(
       detail: `Tax roll total value: $${assessed.toLocaleString()}.`,
       result: assessed,
       result_label: `$${assessed.toLocaleString()}`,
+      kind: "input",
     });
   }
 
@@ -323,6 +340,7 @@ export function buildValuationDetail(
       detail: ownLine.detail,
       result: ownLine.value,
       result_label: ownLine.value ? `$${ownLine.value.toLocaleString()}` : undefined,
+      kind: "market",
     });
   }
 
@@ -334,6 +352,7 @@ export function buildValuationDetail(
       detail: compLine.detail,
       result: compLine.value,
       result_label: compLine.value ? `$${compLine.value.toLocaleString()}` : undefined,
+      kind: "market",
     });
   }
 
@@ -345,6 +364,7 @@ export function buildValuationDetail(
       detail: gradLine.detail,
       result: gradLine.value,
       result_label: gradLine.value ? `$${gradLine.value.toLocaleString()}` : undefined,
+      kind: "market",
     });
   }
 
@@ -354,10 +374,11 @@ export function buildValuationDetail(
     source: marketMethodLabel,
     detail:
       marketValue != null
-        ? `We prioritize this parcel's own sales, then nearby comps, then a characteristics model. We do not use ZIP-wide ratio extrapolation as market value. Confidence: ${marketConfidence}.`
+        ? `We pick the single best evidence source below — not a weighted average. Confidence: ${marketConfidence}.`
         : "Insufficient parcel-specific evidence for a market estimate.",
     result: marketValue,
     result_label: marketValue ? `$${marketValue.toLocaleString()}` : undefined,
+    kind: "market",
   });
 
   if (zipEquity && medianRatio) {
@@ -368,6 +389,7 @@ export function buildValuationDetail(
       detail: `In ${zipEquity.zip_name ?? zipEquity.zip_code}, the median assessment-to-sale ratio is ${(medianRatio * 100).toFixed(1)}% across ${zipEquity.sample_count} matched parcels — used for uniformity analysis, not as this parcel's market value.`,
       result: medianRatio,
       result_label: `${(medianRatio * 100).toFixed(1)}% of sale price`,
+      kind: "context",
     });
   }
 
@@ -380,6 +402,7 @@ export function buildValuationDetail(
       formula: `$${assessed.toLocaleString()} ÷ ${medianRatio.toFixed(3)}`,
       result: deedExtrapolation,
       result_label: `$${deedExtrapolation.toLocaleString()} — not a market appraisal`,
+      kind: "context",
     });
   }
 
@@ -393,6 +416,7 @@ export function buildValuationDetail(
       formula: `$${deedExtrapolation!.toLocaleString()} × ${Number(appreciation).toFixed(4)}`,
       result: metroAdjustedExtrapolation,
       result_label: `$${metroAdjustedExtrapolation.toLocaleString()}`,
+      kind: "context",
     });
   }
 
@@ -406,6 +430,8 @@ export function buildValuationDetail(
       range_low: rangeLow,
       range_high: rangeHigh,
       estimates: estimateLines,
+      selection_rule:
+        "We do not blend or weight these values. The market estimate uses the first method with enough evidence: (1) this parcel's qualified sale, (2) median of nearby comps (3+ sales preferred), (3) characteristics model as fallback. Other figures shown are context only.",
     },
     equity_extrapolation: {
       value: deedExtrapolation,
