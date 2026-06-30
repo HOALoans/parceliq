@@ -9,6 +9,7 @@ import {
 import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type MarketIndexRow } from "./valuationDetail.js";
 import { buildDataFreshness } from "./assessmentFreshness.js";
 import { loadPrcForParcel } from "./spatialestPrc.js";
+import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
 
 function toDateLabel(value: unknown): string | null {
   if (value == null) return null;
@@ -283,29 +284,6 @@ export const parceliqRouter = router({
     }),
 
   equitySummary: publicProcedure.query(async () => {
-    const BUNCOMBE_ZIPS: Record<string, string> = {
-      "28701": "Alexander",
-      "28704": "Arden",
-      "28709": "Barnardsville",
-      "28711": "Black Mountain",
-      "28715": "Candler",
-      "28730": "Fairview",
-      "28732": "Fletcher",
-      "28748": "Leicester",
-      "28778": "Weaverville",
-      "28787": "Weaverville (North)",
-      "28801": "Downtown Asheville",
-      "28802": "Asheville (Central)",
-      "28803": "Biltmore / South Asheville",
-      "28804": "North Asheville",
-      "28805": "East Asheville",
-      "28806": "West Asheville",
-      "28813": "Asheville (PO Box)",
-      "28814": "Asheville (PO Box)",
-      "28815": "Asheville (PO Box)",
-      "28816": "Asheville (PO Box)",
-    };
-
     const { rows } = await pool.query(`
       SELECT zip_code, zip_name, median_ratio, sample_count,
              avg_assessed, avg_sale_price, flag_rate_pct, risk_level
@@ -404,30 +382,20 @@ export const parceliqRouter = router({
     }),
 
   assessmentRatios: publicProcedure.query(async () => {
-    const fallback = [
-      { zip: "28801", area: "Downtown Asheville", ratio: 0.749 },
-      { zip: "28803", area: "Biltmore/South",     ratio: 0.719 },
-      { zip: "28804", area: "North Asheville",    ratio: 0.723 },
-      { zip: "28805", area: "East Asheville",     ratio: 0.746 },
-      { zip: "28806", area: "West Asheville",     ratio: 0.721 },
-      { zip: "28711", area: "Black Mountain",     ratio: 0.727 },
-    ];
-
     const { rows } = await pool.query(
       `SELECT zip_code, zip_name, median_ratio, sample_count
        FROM parceliq_zip_equity
-       WHERE zip_code IN ('28801','28803','28804','28805','28806','28711')
-       ORDER BY zip_code`
+       WHERE zip_code = ANY($1)
+       ORDER BY zip_code`,
+      [Object.keys(BUNCOMBE_ZIPS)],
     ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
 
-    const zipCodes = rows.length
-      ? rows.map((row) => ({
-          zip: String(row.zip_code),
-          area: String(row.zip_name ?? row.zip_code),
-          ratio: Number(row.median_ratio),
-          sampleCount: Number(row.sample_count ?? 0),
-        }))
-      : fallback;
+    const zipCodes = rows.map((row) => ({
+      zip: String(row.zip_code),
+      area: BUNCOMBE_ZIPS[String(row.zip_code)] || String(row.zip_name ?? row.zip_code),
+      ratio: Number(row.median_ratio),
+      sampleCount: Number(row.sample_count ?? 0),
+    }));
 
     const countyMedianRatio = zipCodes.length
       ? zipCodes.reduce((sum, z) => sum + z.ratio, 0) / zipCodes.length

@@ -228,6 +228,17 @@ function DashboardTab() {
 
   const countyPct = ratios?.countyMedianPct ?? COUNTY_ASSESSMENT_RATIO * 100;
   const zipRatios = ratios?.zipCodes ?? ASSESSMENT_RATIO_BY_ZIP;
+  const chartData = zipRatios.map((z) => ({
+    name: z.zip,
+    ratio: Math.round(z.ratio * 1000) / 10,
+  }));
+  const chartRatios = chartData.map((d) => d.ratio);
+  const yMin = chartRatios.length
+    ? Math.floor(Math.min(...chartRatios) - 2)
+    : 65;
+  const yMax = chartRatios.length
+    ? Math.ceil(Math.max(...chartRatios) + 2)
+    : 80;
 
   const stats = [
     { label: "Assessment Ratio",   value: `${countyPct.toFixed(1)}%`, sub: "Of market value (county-wide)", color: "border-t-amber-500" },
@@ -282,18 +293,22 @@ function DashboardTab() {
             </TableBody>
           </Table>
 
-          <div className="h-48 rounded-lg border bg-white p-2">
+          <div className="h-80 rounded-lg border bg-white p-2 pt-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={zipRatios.map((z) => ({
-                  name: z.zip,
-                  ratio: Math.round(z.ratio * 1000) / 10,
-                }))}
-                margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+                data={chartData}
+                margin={{ top: 4, right: 8, left: 0, bottom: 48 }}
               >
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 10 }}
+                  angle={-45}
+                  textAnchor="end"
+                  height={56}
+                  interval={0}
+                />
                 <YAxis
-                  domain={[65, 80]}
+                  domain={[yMin, yMax]}
                   tick={{ fontSize: 11 }}
                   tickFormatter={(v) => `${v}%`}
                 />
