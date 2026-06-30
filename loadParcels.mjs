@@ -1,5 +1,5 @@
 /**
- * ParcelIQ — Buncombe County Data Loader
+ * Parcelogik.com — Buncombe County Data Loader
  * Run: node --experimental-specifier-resolution=node loadParcels.mjs
  *
  * Loads Buncombe_County_All_Property_Bills_from_2025.csv into Postgres.
@@ -23,7 +23,7 @@ const pool = new Pool({
 const CSV_PATH = process.argv[2] || "./Buncombe_County_All_Property_Bills_from_2025.csv";
 
 async function run() {
-  console.log("🏛  ParcelIQ Data Loader — Buncombe County 2025");
+  console.log("🏛  Parcelogik.com Data Loader — Buncombe County 2025");
   console.log(`📂 Reading: ${CSV_PATH}`);
 
   if (!fs.existsSync(CSV_PATH)) {

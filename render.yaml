@@ -5,7 +5,7 @@
 
 services:
   - type: web
-    name: parceliq
+    name: parcelogik
     runtime: node
     buildCommand: npm run build
     startCommand: npm start
@@ -16,7 +16,7 @@ services:
         sync: false
 
   - type: cron
-    name: parceliq-rod-sync
+    name: parcelogik-rod-sync
     runtime: node
     # Sundays 07:00 UTC ≈ 2:00 AM US Eastern (standard time)
     schedule: "0 7 * * 0"

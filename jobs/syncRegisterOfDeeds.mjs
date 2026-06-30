@@ -1,5 +1,5 @@
 /**
- * ParcelIQ — Weekly NC Register of Deeds sales sync
+ * Parcelogik.com — Weekly NC Register of Deeds sales sync
  *
  * Incremental upsert of qualified sales, ZIP equity recompute, deed-ratio model refresh.
  *

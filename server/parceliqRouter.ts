@@ -113,7 +113,7 @@ export const parceliqRouter = router({
         parcels:       rows.map(enrichRow),
         count:         rows.length,
         exceededLimit: rows.length === input.limit,
-        source:        "ParcelIQ Database (Buncombe County 2025)",
+        source:        "Parcelogik Database (Buncombe County 2025)",
       };
     }),
 

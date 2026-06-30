@@ -1,5 +1,5 @@
 /**
- * ParcelIQ — 2026 Reappraisal Data Loader
+ * Parcelogik.com — 2026 Reappraisal Data Loader
  * 
  * Loads Property.csv (2026 reappraisal values) into a new
  * parceliq_parcels_2026 table, preserving 2021 baseline data.
@@ -333,7 +333,7 @@ async function computeYoY() {
 }
 
 async function run() {
-  console.log("🏛  ParcelIQ — 2026 Reappraisal Loader");
+  console.log("🏛  Parcelogik.com — 2026 Reappraisal Loader");
   console.log("═".repeat(50));
   await ensureTables();
   await load2026();

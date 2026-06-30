@@ -341,7 +341,7 @@ export function buildValuationDetail(
     steps.push({
       step: step++,
       title: "Characteristics-based estimate",
-      source: "ParcelIQ gradient model",
+      source: "Parcelogik gradient model",
       detail: gradLine.detail,
       result: gradLine.value,
       result_label: gradLine.value ? `$${gradLine.value.toLocaleString()}` : undefined,
@@ -375,7 +375,7 @@ export function buildValuationDetail(
     steps.push({
       step: step++,
       title: "ZIP ratio extrapolation (equity study only)",
-      source: "ParcelIQ uniformity metric",
+      source: "Parcelogik uniformity metric",
       detail: equityDisclaimer,
       formula: `$${assessed.toLocaleString()} ÷ ${medianRatio.toFixed(3)}`,
       result: deedExtrapolation,

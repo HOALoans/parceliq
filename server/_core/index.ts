@@ -21,7 +21,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", service: "ParcelIQ", ts: new Date().toISOString() });
+  res.json({ status: "ok", service: "Parcelogik", ts: new Date().toISOString() });
 });
 
 // tRPC
@@ -59,7 +59,7 @@ if (isMain) {
   (async () => {
     await ensureTables();
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🏛  ParcelIQ running on port ${PORT}`);
+      console.log(`🏛  Parcelogik.com running on port ${PORT}`);
     });
   })();
 }

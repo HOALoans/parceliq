@@ -1,5 +1,5 @@
 /**
- * ParcelIQ Valuation Model — TypeScript
+ * Parcelogik Valuation Model — TypeScript
  * Gradient-boosted regression logic, calibrated to Buncombe County market.
  */
 

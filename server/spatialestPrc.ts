@@ -106,7 +106,7 @@ async function prcRequest(path: string, cookie: string, csrfToken: string) {
   const res = await fetch(`${PRC_BASE}/${path}`, {
     headers: {
       Accept: "application/json",
-      "User-Agent": "ParcelIQ/1.0 (Buncombe assessment research)",
+      "User-Agent": "Parcelogik/1.0 (Buncombe assessment research)",
       "X-Requested-With": "XMLHttpRequest",
       Referer: `${PRC_BASE}/`,
       Cookie: cookie,
@@ -119,7 +119,7 @@ async function prcRequest(path: string, cookie: string, csrfToken: string) {
 
 async function establishPrcSession() {
   const homeRes = await fetch(`${PRC_BASE}/`, {
-    headers: { Accept: "text/html", "User-Agent": "ParcelIQ/1.0" },
+    headers: { Accept: "text/html", "User-Agent": "Parcelogik/1.0" },
   });
   let cookie = mergeCookies("", getSetCookie(homeRes.headers));
   const html = await homeRes.text();

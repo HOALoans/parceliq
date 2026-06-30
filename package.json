@@ -1,6 +1,7 @@
 {
-  "name": "parceliq",
+  "name": "parcelogik",
   "version": "1.0.0",
+  "description": "Parcelogik.com — Buncombe County property assessment intelligence",
   "type": "module",
   "main": "dist/server/_core/index.js",
   "engines": {

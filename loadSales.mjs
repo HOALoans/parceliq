@@ -1,5 +1,5 @@
 /**
- * ParcelIQ — Sales Data Loader (legacy entry point)
+ * Parcelogik.com — Sales Data Loader (legacy entry point)
  *
  * Delegates to the incremental Register of Deeds sync job.
  * Use --full-reload for a clean TRUNCATE + reload (first-time setup).

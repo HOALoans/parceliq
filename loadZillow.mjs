@@ -1,5 +1,5 @@
 /**
- * ParcelIQ — Zillow Metro Data Integrator
+ * Parcelogik.com — Zillow Metro Data Integrator
  * 
  * Blends Zillow metro-level median sale price and ZHVI data
  * with our deed-based zip ratios to create a more accurate
@@ -62,7 +62,7 @@ function getLatestValue(row, headers) {
 }
 
 async function run() {
-  console.log("🏛  ParcelIQ — Zillow Metro Data Integrator");
+  console.log("🏛  Parcelogik.com — Zillow Metro Data Integrator");
   console.log("═".repeat(50));
 
   // ── Load Zillow files ───────────────────────────────────────────
@@ -229,7 +229,7 @@ async function run() {
   console.log("   (This is the total market value not captured in the tax base)");
 
   await pool.end();
-  console.log("\n🏁 Done! ParcelIQ now uses Zillow-calibrated market values.");
+  console.log("\n🏁 Done! Parcelogik now uses Zillow-calibrated market values.");
   console.log("   Push to GitHub and redeploy to see updated model values in the app.");
 }
 

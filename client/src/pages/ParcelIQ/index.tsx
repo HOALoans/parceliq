@@ -1,7 +1,5 @@
 /**
- * ParcelIQ — Assessment Dashboard
- * Drop into: client/src/pages/ParcelIQ/index.tsx
- * Uses your existing shadcn/ui, tRPC, Tailwind, Recharts, Zod — nothing new to install.
+ * Parcelogik.com — Assessment Dashboard
  */
 
 import { useState, useRef } from "react";
@@ -184,7 +182,7 @@ function ScorePill({ score }: { score: number | null }) {
 // ════════════════════════════════════════════════════════════════════════
 //  MAIN PAGE
 // ════════════════════════════════════════════════════════════════════════
-export default function ParcelIQPage() {
+export default function ParcelogikPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [zipSample, setZipSample] = useState<string | null>(null);
 
@@ -201,9 +199,12 @@ export default function ParcelIQPage() {
       <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-serif font-semibold tracking-tight">
-            Parcel<span className="text-amber-400">IQ</span>
+            <a href="https://parcelogik.com" className="hover:opacity-90 transition-opacity">
+              Parcel<span className="text-amber-400">ogik</span>
+              <span className="text-slate-400 font-sans text-sm font-normal">.com</span>
+            </a>
           </h1>
-          <p className="text-xs text-slate-400 mt-0.5">Buncombe County, NC · Assessment Platform</p>
+          <p className="text-xs text-slate-400 mt-0.5">Buncombe County, NC · Property Assessment Intelligence</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 text-xs bg-slate-800 text-green-400 px-3 py-1 rounded-full">
@@ -1328,7 +1329,7 @@ function RevenueTab() {
       <div>
         <h2 className="text-lg font-semibold">Revenue Targeting</h2>
         <p className="text-sm text-muted-foreground">
-          Input your county's budget goal — ParcelIQ derives a scientifically fair millage rate.
+          Input your county's budget goal — Parcelogik derives a scientifically fair millage rate.
         </p>
       </div>
 

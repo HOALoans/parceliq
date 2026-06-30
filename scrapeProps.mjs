@@ -1,5 +1,5 @@
 /**
- * ParcelIQ — Spatialest Property Card Scraper
+ * Parcelogik.com — Spatialest Property Card Scraper
  * Fetches beds, baths, sqft, year built for each PIN
  * from community.spatialest.com/nc/buncombe (public portal)
  *
@@ -46,7 +46,7 @@ function fetchUrl(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; ParcelIQ/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; Parcelogik/1.0)",
         "Accept": "application/json, text/html",
         "Referer": BASE,
       },
@@ -165,7 +165,7 @@ function parseHtmlCard(html) {
 
 // ── Main loop ─────────────────────────────────────────────────────────
 async function run() {
-  console.log("🏛  ParcelIQ Property Scraper — Spatialest");
+  console.log("🏛  Parcelogik.com Property Scraper — Spatialest");
   await ensureColumns();
 
   // First test one PIN to see what we get

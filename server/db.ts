@@ -49,7 +49,7 @@ export async function ensureTables(): Promise<void> {
       );
     }
     tablesEnsured = true;
-    console.log("✅ ParcelIQ tables ready");
+    console.log("✅ Parcelogik tables ready");
   } catch (e) {
     console.error("ensureTables failed:", e);
   }
