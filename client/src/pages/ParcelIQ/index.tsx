@@ -35,6 +35,7 @@ import {
   Building2, Search, Target, Scale,
   ClipboardList, AlertTriangle, CheckCircle2,
   TrendingUp, TrendingDown, RefreshCw, Plus, Info, ExternalLink,
+  ArrowLeft,
 } from "lucide-react";
 
 const COUNTY_ASSESSMENT_RATIO = 0.725;
@@ -169,7 +170,14 @@ function ScorePill({ score }: { score: number | null }) {
 // ════════════════════════════════════════════════════════════════════════
 export default function ParcelIQPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
-  
+  const [zipSample, setZipSample] = useState<string | null>(null);
+
+  const openZipSample = (zip: string) => {
+    setZipSample(zip);
+    setTab("explorer");
+  };
+
+  const clearZipSample = () => setZipSample(null);
 
   return (
     <div className="flex flex-col min-h-screen bg-neutral-50">
@@ -208,10 +216,15 @@ export default function ParcelIQPage() {
 
       {/* Content */}
       <div className="flex-1 p-6">
-        {tab === "dashboard"  && <DashboardTab />}
-        {tab === "explorer"   && <ExplorerTab />}
+        {tab === "dashboard"  && <DashboardTab onOpenZip={openZipSample} />}
+        {tab === "explorer"   && (
+          <ExplorerTab
+            zipSample={zipSample}
+            onClearZipSample={clearZipSample}
+          />
+        )}
         {tab === "revenue"    && <RevenueTab />}
-        {tab === "equity"     && <EquityTab />}
+        {tab === "equity"     && <EquityTab onOpenZip={openZipSample} />}
         {tab === "overrides"  && <OverridesTab />}
         {tab === "audit"      && <AuditTab />}
       </div>
@@ -219,10 +232,32 @@ export default function ParcelIQPage() {
   );
 }
 
+function ZipLink({
+  zip,
+  onOpenZip,
+  className = "",
+}: {
+  zip: string;
+  onOpenZip: (zip: string) => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenZip(zip)}
+      className={`font-mono font-semibold text-amber-800 hover:text-amber-950 hover:underline inline-flex items-center gap-1 ${className}`}
+      title={`View ${zip} equity sample properties`}
+    >
+      {zip}
+      <ExternalLink className="w-3 h-3 opacity-60" />
+    </button>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════
 //  DASHBOARD
 // ════════════════════════════════════════════════════════════════════════
-function DashboardTab() {
+function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
   const { data, isLoading, refetch } = trpc.parceliq.searchParcels.useQuery({ limit: 5 });
   const { data: ratios } = trpc.parceliq.assessmentRatios.useQuery();
 
@@ -278,7 +313,9 @@ function DashboardTab() {
             <TableBody>
               {zipRatios.map((z) => (
                 <TableRow key={z.zip} className="bg-white/60">
-                  <TableCell className="font-mono text-xs font-semibold">{z.zip}</TableCell>
+                  <TableCell>
+                    <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-xs" />
+                  </TableCell>
                   <TableCell className="text-sm">{z.area}</TableCell>
                   <TableCell className="text-right font-mono text-sm font-medium">
                     {z.ratio.toFixed(3)}
@@ -423,9 +460,196 @@ function DashboardTab() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
+//  ZIP EQUITY SAMPLE (drill-down from Equity / Dashboard)
+// ════════════════════════════════════════════════════════════════════════
+function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void }) {
+  type SampleSort = "ratio_asc" | "ratio_desc" | "assessed_desc" | "sale_desc";
+  const [sort, setSort] = useState<SampleSort>("ratio_asc");
+  const [detailPin, setDetailPin] = useState<string | null>(null);
+  const [detailAddress, setDetailAddress] = useState<string | null>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  const { data, isLoading } = trpc.parceliq.zipEquitySample.useQuery({ zip, sort, limit: 200 });
+
+  const commercialCount = data?.parcels.filter((p) => p.likelyCommercial).length ?? 0;
+  const commercialPct = data?.parcels.length
+    ? Math.round((commercialCount / data.parcels.length) * 100)
+    : 0;
+
+  const openDetail = (pin: string, address: string) => {
+    setDetailPin(pin);
+    setDetailAddress(address);
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Button size="sm" variant="ghost" className="-ml-2 mb-2" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back to Property Explorer
+          </Button>
+          <h2 className="text-lg font-semibold">
+            ZIP {zip} · {data?.zipName ?? "…"}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
+            {data?.methodology ?? "Loading equity sample…"}
+          </p>
+        </div>
+        {data?.summary && (
+          <div className="text-right shrink-0">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Median ratio</p>
+            <p className="text-2xl font-serif font-semibold">{data.summary.medianRatioPct}%</p>
+            <p className="text-xs text-muted-foreground">{data.total} matched parcels</p>
+          </div>
+        )}
+      </div>
+
+      {zip === "28801" && data && (
+        <Card className="border border-slate-300 bg-slate-50">
+          <CardContent className="pt-4 text-sm text-slate-800 space-y-2">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" />
+              <div>
+                <p className="font-medium">Downtown mix: commercial vs residential</p>
+                <p className="text-muted-foreground mt-1 leading-relaxed">
+                  ZIP 28801 is heavily commercial. About{" "}
+                  <strong>{commercialCount} of {data.parcels.length}</strong> sample properties
+                  ({commercialPct}%) have owner names suggesting a business entity (LLC, Inc., etc.).
+                  A low median assessment ratio here may reflect commercial valuation methods,
+                  post–Hurricane Helene recovery policies, or which properties happened to sell
+                  recently — not necessarily the same pattern as residential neighborhoods.
+                  Review individual parcels below to see what is driving the ZIP median.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex items-center gap-3">
+        <Label className="text-xs text-muted-foreground shrink-0">Sort by</Label>
+        <Select value={sort} onValueChange={(v) => setSort(v as SampleSort)}>
+          <SelectTrigger className="w-56 h-8 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ratio_asc">Assessment ratio (lowest first)</SelectItem>
+            <SelectItem value="ratio_desc">Assessment ratio (highest first)</SelectItem>
+            <SelectItem value="assessed_desc">Assessed value (highest first)</SelectItem>
+            <SelectItem value="sale_desc">Sale price (highest first)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card>
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-sm font-semibold">
+            {isLoading ? "Loading…" : `${data?.total ?? 0} properties in equity sample`}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Address</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead className="text-right">Assessed</TableHead>
+                <TableHead className="text-right">Sale price</TableHead>
+                <TableHead className="text-right">Sale date</TableHead>
+                <TableHead className="text-right">Ratio</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                    Loading equity sample…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!isLoading && !data?.parcels.length && (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-10 text-muted-foreground">
+                    No matched sales found for this ZIP.
+                  </TableCell>
+                </TableRow>
+              )}
+              {data?.parcels.map((p) => (
+                <TableRow key={p.pin} className={p.ratio < 0.7 ? "bg-amber-50/50" : ""}>
+                  <TableCell className="text-sm font-medium max-w-[200px]">
+                    <div className="truncate">{p.address || "—"}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground">{p.pin}</div>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[160px]">
+                    <div className="truncate">{p.owner || "—"}</div>
+                    {p.likelyCommercial && (
+                      <Badge variant="outline" className="mt-1 text-[10px] py-0">Likely commercial</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-sm">{fmt(p.assessed)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{fmt(p.salePrice)}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">{p.sellDate ?? "—"}</TableCell>
+                  <TableCell className={`text-right font-mono text-sm font-semibold ${
+                    p.ratioPct < 70 ? "text-amber-700" : p.ratioPct > 100 ? "text-red-700" : "text-green-700"
+                  }`}>
+                    {p.ratioPct}%
+                  </TableCell>
+                  <TableCell>
+                    <Button size="sm" variant="outline" onClick={() => openDetail(p.pin, p.address)}>
+                      View
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {detailPin && (
+        <div ref={detailRef} className="scroll-mt-4">
+          <Card className="border-2 border-slate-800 shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between py-4 px-4">
+              <div>
+                <CardTitle className="text-lg font-serif">{detailAddress}</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1 font-mono">{detailPin}</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => { setDetailPin(null); setDetailAddress(null); }}>
+                Close
+              </Button>
+            </CardHeader>
+            <CardContent className="px-4 pb-6">
+              <ParcelDetailFetcher key={detailPin} pin={detailPin} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
 //  PROPERTY EXPLORER
 // ════════════════════════════════════════════════════════════════════════
-function ExplorerTab() {
+function ExplorerTab({
+  zipSample,
+  onClearZipSample,
+}: {
+  zipSample: string | null;
+  onClearZipSample: () => void;
+}) {
+  if (zipSample) {
+    return <ZipEquitySampleView zip={zipSample} onBack={onClearZipSample} />;
+  }
+
+  return <ExplorerSearchView />;
+}
+
+function ExplorerSearchView() {
   const [q, setQ]         = useState("");
   const [classCd, setCls] = useState<string>("");
   const [search, setSearch] = useState("");
@@ -1124,7 +1348,7 @@ function RevenueTab() {
 // ════════════════════════════════════════════════════════════════════════
 //  EQUITY ANALYSIS
 // ════════════════════════════════════════════════════════════════════════
-function EquityTab() {
+function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
   const { data, isLoading } = trpc.parceliq.equitySummary.useQuery();
   type SortKey = "medianVariancePct" | "zip" | "parcelCount" | "medianRatio" | "flagRatePct";
   const [sortKey, setSortKey] = useState<SortKey>("medianVariancePct");
@@ -1156,7 +1380,7 @@ function EquityTab() {
         <h2 className="text-lg font-semibold">Equity Analysis</h2>
         <p className="text-sm text-muted-foreground">
           Assessment-to-sale ratios by ZIP, from {data?.summary?.zipCount ?? "—"} Buncombe County zip codes
-          (NC Register of Deeds qualified sales).
+          (NC Register of Deeds qualified sales). Click a ZIP to see the matched properties.
         </p>
       </div>
 
@@ -1226,9 +1450,20 @@ function EquityTab() {
               <TableBody>
                 {sortedZips.map((z) => (
                   <TableRow key={z.zip}>
-                    <TableCell className="font-mono text-sm">{z.zip}</TableCell>
+                    <TableCell>
+                      <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-sm" />
+                    </TableCell>
                     <TableCell className="text-sm max-w-[180px] truncate">{z.name}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{z.parcelCount.toLocaleString()}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">
+                      <button
+                        type="button"
+                        className="hover:underline text-amber-800"
+                        onClick={() => onOpenZip(z.zip)}
+                        title={`View ${z.parcelCount} sample properties`}
+                      >
+                        {z.parcelCount.toLocaleString()}
+                      </button>
+                    </TableCell>
                     <TableCell className="text-right font-mono text-sm">{fmt(z.avgAssessment)}</TableCell>
                     <TableCell className="text-right font-mono text-sm">{fmt(z.avgModelValue)}</TableCell>
                     <TableCell className="text-right font-mono text-sm">

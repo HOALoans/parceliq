@@ -10,6 +10,7 @@ import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type Mark
 import { buildDataFreshness } from "./assessmentFreshness.js";
 import { loadPrcForParcel } from "./spatialestPrc.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
+import { EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
 
 function toDateLabel(value: unknown): string | null {
   if (value == null) return null;
@@ -379,6 +380,92 @@ export const parceliqRouter = router({
         "SELECT * FROM parceliq_audit ORDER BY created_at DESC LIMIT $1", [input.limit]
       );
       return { events: rows };
+    }),
+
+  zipEquitySample: publicProcedure
+    .input(z.object({
+      zip:    z.string().length(5),
+      limit:  z.number().min(1).max(200).default(200),
+      offset: z.number().min(0).default(0),
+      sort:   z.enum(["ratio_asc", "ratio_desc", "assessed_desc", "sale_desc"]).default("ratio_asc"),
+    }))
+    .query(async ({ input }) => {
+      if (!(input.zip in BUNCOMBE_ZIPS)) {
+        throw new Error(`ZIP ${input.zip} is not in the Buncombe County analysis set`);
+      }
+
+      const orderBy = {
+        ratio_asc:     "ratio ASC",
+        ratio_desc:    "ratio DESC",
+        assessed_desc: "assessed DESC",
+        sale_desc:     "sale_price DESC",
+      }[input.sort];
+
+      const zipFilter = `AND p.postal_code = $1`;
+
+      const [{ rows: summaryRows }, { rows }, { rows: countRows }] = await Promise.all([
+        pool.query(
+          `SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, flag_rate_pct, risk_level
+           FROM parceliq_zip_equity WHERE zip_code = $1 LIMIT 1`,
+          [input.zip],
+        ),
+        pool.query(
+          `SELECT p.pin, p.address, p.owner_name, p.postal_code, p.total_value AS assessed,
+                  s.selling_price AS sale_price, s.sell_date,
+                  CAST(p.total_value AS FLOAT) / NULLIF(s.selling_price, 0) AS ratio
+           ${EQUITY_SAMPLE_JOIN}
+           ${zipFilter}
+           ORDER BY ${orderBy}
+           LIMIT $2 OFFSET $3`,
+          [input.zip, input.limit, input.offset],
+        ),
+        pool.query(
+          `SELECT COUNT(*)::int AS total
+           ${EQUITY_SAMPLE_JOIN}
+           ${zipFilter}`,
+          [input.zip],
+        ),
+      ]);
+
+      const summary = summaryRows[0] as Record<string, unknown> | undefined;
+      const medianRatio = summary ? Number(summary.median_ratio) : null;
+
+      return {
+        zip:     input.zip,
+        zipName: BUNCOMBE_ZIPS[input.zip] || String(summary?.zip_name ?? input.zip),
+        summary: summary
+          ? {
+              medianRatio,
+              medianRatioPct: medianRatio != null ? +(medianRatio * 100).toFixed(1) : null,
+              sampleCount:    Number(summary.sample_count),
+              avgAssessed:    Number(summary.avg_assessed),
+              avgSalePrice:   Number(summary.avg_sale_price),
+              flagRatePct:    Number(summary.flag_rate_pct),
+              riskLevel:      String(summary.risk_level),
+            }
+          : null,
+        parcels: rows.map((r) => {
+          const ratio = Number(r.ratio);
+          const assessed = Number(r.assessed);
+          const salePrice = Number(r.sale_price);
+          const owner = String(r.owner_name ?? "");
+          return {
+            pin:         String(r.pin),
+            address:     String(r.address ?? ""),
+            owner,
+            assessed,
+            salePrice,
+            sellDate:    r.sell_date ? String(r.sell_date).slice(0, 10) : null,
+            ratio:       +ratio.toFixed(4),
+            ratioPct:    +(ratio * 100).toFixed(1),
+            variancePct: +((ratio - 1) * 100).toFixed(1),
+            likelyCommercial: /LLC|INC\.?|CORP|L\.?P\.?|TRUST|PARTNERS|HOLDINGS|PROPERTIES|REALTY|DEVELOPMENT|ENTERPRISES|ASSOCIATES|COMPANY|CO\./i.test(owner),
+          };
+        }),
+        total:         Number(countRows[0]?.total ?? 0),
+        methodology:
+          "Parcels with a qualified Register of Deeds sale since 2020 (most recent sale per PIN, excluding vacant lots). Same cohort used to compute ZIP median ratios.",
+      };
     }),
 
   assessmentRatios: publicProcedure.query(async () => {
