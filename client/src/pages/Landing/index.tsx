@@ -24,7 +24,11 @@ const DATA_SOURCES = [
   },
   {
     title: "Parcel-specific comps",
-    detail: "Recent sales in the same ZIP, prioritized over county-wide ratio extrapolation.",
+    detail: "Qualified sales in the same ZIP, matched by square footage, property type, and year built when county data allows — not a blind ZIP-wide ratio.",
+  },
+  {
+    title: "2026 reappraisal cycle",
+    detail: "2021 tax roll baseline vs. 2026 county reappraisal values — parcel by parcel and ZIP by ZIP, for uniformity analysis across the cycle.",
   },
   {
     title: "Metro trend context",
@@ -39,7 +43,7 @@ const COUNTIES = [
     state: "North Carolina",
     status: "live" as const,
     blurb: "112,000+ parcels · Asheville metro · 2026 reappraisal data",
-    stats: ["Equity by ZIP", "Live PRC", "85k+ deed sales"],
+    stats: ["Equity by ZIP", "Live PRC", "2021→2026 reappraisal", "85k+ deed sales"],
   },
   {
     slug: "coming-soon",
@@ -162,7 +166,8 @@ export default function LandingPage() {
             <ul className="space-y-2 text-sm text-slate-700">
               {[
                 "County record vs. market estimate vs. variance — at a glance",
-                "Show which comparable sales drove the estimate",
+                "2021 baseline vs. 2026 reappraisal on every matched parcel",
+                "Comps matched by sq ft, property type, and year built",
                 "Separate ZIP equity metrics from market appraisal",
                 "Live Spatialest PRC when available",
               ].map((item) => (
@@ -217,7 +222,7 @@ export default function LandingPage() {
           <ol className="space-y-4">
             {[
               { n: 1, title: "This parcel's qualified sale", sub: "Strongest — verified transaction on this PIN" },
-              { n: 2, title: "Nearby comparable sales", sub: "Median of recent sales in the same ZIP" },
+              { n: 2, title: "Nearby comparable sales", sub: "Median of qualified sales matched by size, property type, and age in the same ZIP" },
               { n: 3, title: "Property characteristics", sub: "Fallback from lot, location, and class when sales are thin" },
             ].map(({ n, title, sub }) => (
               <li key={n} className="flex gap-4 items-start">
@@ -235,6 +240,33 @@ export default function LandingPage() {
             ZIP-wide ratio extrapolation is shown separately for equity / uniformity analysis — it
             is not substituted for the market estimate.
           </p>
+        </div>
+      </section>
+
+      {/* Reappraisal cycle */}
+      <section className="bg-indigo-50 border-y border-indigo-100 px-6 py-14">
+        <div className="max-w-5xl mx-auto">
+          <h3 className="text-2xl font-serif font-semibold text-slate-900 mb-3">
+            2021 → 2026 reappraisal equity
+          </h3>
+          <p className="text-slate-600 leading-relaxed max-w-3xl mb-6">
+            Buncombe&apos;s 2026 reappraisal is live in Parcelogik. Compare the prior-cycle tax roll to
+            the new county file for any parcel, and see how your neighborhood&apos;s median increase
+            compares to the county — a separate lens from market value or deed-sale equity.
+          </p>
+          <div className="grid sm:grid-cols-3 gap-4 text-center">
+            {[
+              { label: "Matched parcels", value: "112k+", sub: "2021 & 2026 on file" },
+              { label: "County median increase", value: "+61%", sub: "Across matched parcels" },
+              { label: "ZIP spread", value: "28 pts", sub: "Lowest vs. highest median ZIP" },
+            ].map(({ label, value, sub }) => (
+              <div key={label} className="rounded-lg border border-indigo-200 bg-white p-5">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+                <p className="text-2xl font-serif font-semibold mt-1 text-indigo-950">{value}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -299,7 +331,7 @@ export default function LandingPage() {
           {[
             { icon: Scale, title: "Equity analysis", text: "Are assessments uniform across ZIPs and property types?" },
             { icon: FileSearch, title: "Appeal support", text: "Compare your assessment to comps and market evidence." },
-            { icon: Building2, title: "Policy & revenue", text: "Understand the tax base and reappraisal impacts county-wide." },
+            { icon: Building2, title: "Policy & revenue", text: "Track reappraisal impacts ZIP by ZIP — who bore the largest assessment increases." },
           ].map(({ icon: Icon, title, text }) => (
             <div key={title} className="space-y-2">
               <Icon className="w-8 h-8 mx-auto text-amber-600" />
