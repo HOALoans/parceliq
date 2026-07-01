@@ -27,6 +27,50 @@ function pct(n: number | null | undefined, signed = false): string {
   return `${v}%`;
 }
 
+function fairnessVerdict(yoy: ReappraisalYoY): { emoji: string; label: string; detail: string } {
+  const home = yoy.change_pct;
+  const county = yoy.county_median_change_pct;
+  if (county == null) {
+    return {
+      emoji: "ℹ️",
+      label: "County comparison unavailable",
+      detail: "We could not load the county-wide average for this review period.",
+    };
+  }
+  const diff = +(home - county).toFixed(1);
+  if (Math.abs(diff) <= 2) {
+    return {
+      emoji: "🟢",
+      label: "Right on track",
+      detail:
+        `Your home value grew at about the same speed as the average home in Buncombe County (+${pct(county)}). ` +
+        `Your share of the county's "pizza" — your piece of the total tax bill — should stay roughly the same.`,
+    };
+  }
+  if (diff > 2) {
+    const zipNote =
+      yoy.zip_name && yoy.zip_median_change_pct != null
+        ? ` Your area (${yoy.zip_name}) saw a typical increase of about +${pct(yoy.zip_median_change_pct)}.`
+        : "";
+    return {
+      emoji: "⚠️",
+      label: "Faster than average",
+      detail:
+        `Your property value grew faster than the county average by about ${diff} percentage points ` +
+        `(your home: +${pct(home, true)} vs county average: +${pct(county)}).${zipNote} ` +
+        `That can mean your share of the county tax bill grew more than many neighbors — worth a closer look.`,
+    };
+  }
+  return {
+    emoji: "🟢",
+    label: "Slower than average",
+    detail:
+      `Your property value grew slower than the county average by about ${Math.abs(diff)} percentage points ` +
+      `(your home: +${pct(home, true)} vs county average: +${pct(county)}). ` +
+      `Your share of the county tax bill may have shrunk relative to owners whose values jumped more.`,
+  };
+}
+
 export function buildParcelNarrative(opts: {
   address: string;
   pin: string;
@@ -36,7 +80,7 @@ export function buildParcelNarrative(opts: {
   reappraisalYoY: ReappraisalYoY | null;
   dataFreshness: DataFreshness;
 }): ParcelNarrative {
-  const { address, pin, zip, valuation: v, reappraisalYoY: yoy, dataFreshness: fresh } = opts;
+  const { address, pin, valuation: v, reappraisalYoY: yoy, dataFreshness: fresh } = opts;
   const me = v.market_estimate;
   const assessed = v.county_assessment;
   const market = me.value;
@@ -47,62 +91,82 @@ export function buildParcelNarrative(opts: {
   const prc = v.prc;
 
   const tldr: string[] = [
-    `County assessment (what you're taxed on): ${money(assessed)}.`,
+    `What the county says you're taxed on: ${money(assessed)}.`,
     market != null
-      ? `Our market estimate (what similar sales suggest): ${money(market)} — via ${me.method_label.toLowerCase()}.`
-      : "We don't have enough sales evidence for a market estimate on this parcel.",
+      ? `What similar home sales suggest today: ${money(market)}.`
+      : "We need more nearby sale data to estimate what this home might sell for today.",
     yoy
-      ? `2026 reappraisal vs 2021 tax roll: ${money(yoy.value_2021)} → ${money(yoy.value_2026)} (${pct(yoy.change_pct, true)}).`
+      ? `New value review: ${money(yoy.value_2021)} in 2021 → ${money(yoy.value_2026)} now (+${pct(yoy.change_pct, true)}).`
       : null,
-    "These are separate questions — we do not blend them into one 'true value.'",
+    "These are separate questions — we show each one clearly instead of blending them into one magic number.",
   ].filter((s): s is string => !!s);
 
   let headline: string;
-  if (market == null) {
-    headline = `${address} — county assessment is ${money(assessed)}; we need more sales data to estimate market value.`;
+  if (yoy) {
+    headline = `${address} — the county raised its value from ${money(yoy.value_2021)} to ${money(yoy.value_2026)} (+${pct(yoy.change_pct, true)}).`;
+  } else if (market == null) {
+    headline = `${address} — county value is ${money(assessed)}; we need more sale data to estimate market price.`;
   } else if (v.verdict === "over_assessed") {
-    headline = `${address} — the county assessment (${money(assessed)}) is about ${pct(v.variance_pct, true)} above our market estimate (${money(market)}).`;
+    headline = `${address} — the county says ${money(assessed)}, but similar sales suggest about ${money(market)} (a ${pct(Math.abs(v.variance_pct ?? 0))} gap).`;
   } else if (v.verdict === "under_assessed") {
-    headline = `${address} — the county assessment (${money(assessed)}) is about ${Math.abs(v.variance_pct ?? 0).toFixed(1)}% below our market estimate (${money(market)}).`;
-  } else if (v.verdict === "fair") {
-    headline = `${address} — county assessment and market estimate are within 15% of each other (${money(assessed)} vs ${money(market)}).`;
+    headline = `${address} — the county value (${money(assessed)}) is below what similar sales suggest (${money(market)}).`;
   } else {
-    headline = `${address} — county assessment ${money(assessed)}; market estimate ${money(market)}.`;
+    headline = `${address} — county value and sale-based estimate are close (${money(assessed)} vs ${money(market)}).`;
   }
 
   const sections: NarrativeSection[] = [];
 
   sections.push({
-    id: "three_numbers",
-    title: "Start here: three different numbers",
+    id: "why",
+    title: "Why property values change (the pizza slice)",
     paragraphs: [
-      "Property analysis on Parcelogik answers three different questions. They often disagree — that is expected, not a bug.",
+      "Think of the county budget like a giant pizza ordered for a party, and your tax bill is your share of the cost. " +
+        "The county isn't trying to make the pizza bigger to trick you — it's trying to figure out how big your slice should be " +
+        "based on how your home compares to everyone else's.",
+      "If your neighborhood suddenly became the most popular spot in town, your slice got bigger — you pay a bit more of the total bill. " +
+        "Someone in a neighborhood that didn't change as much pays less.",
     ],
-    bullets: [
-      `County assessment (${money(assessed)}) — Buncombe's official appraised value for property tax. This is what your bill is based on.`,
-      market != null
-        ? `Market estimate (${money(market)}) — What qualified deed sales suggest this property might sell for today. Built from evidence on this parcel and similar sales — not a Zestimate.`
-        : "Market estimate — Not enough comparable sales to produce a reliable figure for this parcel.",
-      yoy
-        ? `2026 reappraisal (${money(yoy.value_2026)}) — How this parcel's assessment changed from the 2021 tax cycle to the 2026 county reappraisal file.`
-        : "2026 reappraisal — No matched 2021→2026 record for this PIN.",
-      v.equity_extrapolation?.value
-        ? `ZIP equity extrapolation (${money(v.equity_extrapolation.value)}) — A uniformity metric only. It spreads the ZIP's typical assessment-to-sale ratio across parcels. It is not a market appraisal.`
-        : undefined,
-    ].filter((b): b is string => !!b),
   });
+
+  if (yoy) {
+    const perHundred = Math.round(100 + yoy.change_pct);
+    const verdict = fairnessVerdict(yoy);
+    sections.push({
+      id: "then_now",
+      title: "What changed",
+      paragraphs: [
+        `What the county said your home was worth in 2021: ${money(yoy.value_2021)}.`,
+        `What the county says it is worth now: ${money(yoy.value_2026)}.`,
+        `The difference: ${yoy.change_amt > 0 ? "+" : ""}${money(yoy.change_amt)} (your property value went up by ${pct(yoy.change_pct, true)}).`,
+        `According to the county's math, for every $100 your home was worth five years ago, it is now worth about $${perHundred}. ` +
+          `That mirrors what has been happening in the housing market across our area.`,
+      ],
+    });
+
+    sections.push({
+      id: "fairness",
+      title: "Is it fair compared to everyone else?",
+      paragraphs: [
+        `${verdict.emoji} ${verdict.label}. ${verdict.detail}`,
+        `Your home's growth: +${pct(yoy.change_pct)}. County average: +${pct(yoy.county_median_change_pct)}.`,
+        yoy.zip_name && yoy.zip_median_change_pct != null
+          ? `Typical growth in ${yoy.zip_name} (ZIP ${yoy.zipcode}): +${pct(yoy.zip_median_change_pct)}.`
+          : "",
+      ].filter(Boolean),
+    });
+  }
 
   sections.push({
     id: "county",
-    title: "What the county says",
+    title: "What the county says today",
     paragraphs: [
       prc
-        ? `We pulled the live Spatialest property record card (PRC). Total appraised value: ${money(prc.total_appraised)}${prc.latest_value_year ? ` (${prc.latest_value_year} tax year)` : ""}.`
-        : `We are using the bulk tax roll snapshot: ${money(assessed)}. Live PRC data was not available for this parcel.`,
+        ? `We pulled the live county property record. Total value on file: ${money(prc.total_appraised)}${prc.latest_value_year ? ` (${prc.latest_value_year} tax year)` : ""}.`
+        : `We're using the county's bulk tax file: ${money(assessed)}.`,
       v.tax_roll_assessment != null &&
       v.prc_assessment != null &&
       v.tax_roll_assessment !== v.prc_assessment
-        ? `Note: the older tax roll had ${money(v.tax_roll_assessment)}; the live PRC is higher at ${money(v.prc_assessment)}. We use the PRC figure in this analysis.`
+        ? `An older county file had ${money(v.tax_roll_assessment)}; the live record is now ${money(v.prc_assessment)}. We use the newer figure.`
         : "",
     ].filter(Boolean),
     bullets: prc?.building?.sqft
@@ -114,99 +178,77 @@ export function buildParcelNarrative(opts: {
       : undefined,
   });
 
-  const marketParagraphs: string[] = [
-    "We do not average every number on the page. We pick one market method using a priority ladder — the first source with enough evidence wins.",
-  ];
+  const marketParagraphs: string[] = [];
 
   if (method === "own_sale" && ownSales[0]) {
     const s = ownSales[0];
     marketParagraphs.push(
-      `This parcel's own qualified Register of Deeds sale (${money(s.selling_price)}${s.sell_date ? ` on ${s.sell_date}` : ""}) is the strongest evidence, so it drives the market estimate at ${money(market)}.`,
+      `This home's own recent sale (${money(s.selling_price)}${s.sell_date ? ` on ${s.sell_date}` : ""}) is the strongest clue for what it might sell for today: about ${money(market)}.`,
     );
   } else if (method === "comparable_sales" && comps.length > 0) {
     const prices = comps.map((c) => c.selling_price).sort((a, b) => a - b);
     const med = prices[Math.floor(prices.length / 2)];
     marketParagraphs.push(
-      `No recent on-parcel sale was used (or the recorded sale was too old, land-only, or unreliable). Instead we use ${comps.length} comparable sales in ZIP ${zip}.`,
+      `We compared this home to ${comps.length} similar properties that actually sold nearby.`,
       compMatch?.summary ?? "",
-      `The median sale price among those comps is ${money(med)}, which becomes the headline market estimate of ${money(market)}.`,
-      compMatch?.level === "relaxed" || compMatch?.level === "zip_wide"
-        ? "Match quality: we relaxed size/type filters because few sales matched strictly — treat the estimate with extra caution."
-        : "Comps were filtered by square footage, property type, and year built when county data allowed.",
+      `The middle sale price among those homes is ${money(med)}, so we estimate about ${money(market)} for this property.`,
     );
-  } else if (method === "gradient_model") {
+  } else if (method === "gradient_model" && market != null) {
     marketParagraphs.push(
-      `Sales evidence is thin, so the market estimate (${money(market)}) comes from a characteristics model (lot size, location, property class). This is directional only — not an appraisal.`,
+      `Not many recent sales nearby, so we used home size, location, and type to estimate about ${money(market)}. Treat this as a rough guide — not an official appraisal.`,
     );
   } else {
-    marketParagraphs.push("We could not apply any market method with sufficient evidence.");
-  }
-
-  if (me.range_low != null && me.range_high != null && market != null) {
-    marketParagraphs.push(
-      `Where multiple methods applied, we show a rough sensitivity range of ${money(me.range_low)}–${money(me.range_high)} — but the headline stays ${money(market)}.`,
-    );
+    marketParagraphs.push("We don't have enough nearby sale data to estimate a market price for this home.");
   }
 
   sections.push({
     id: "market",
-    title: "What sales evidence suggests",
+    title: "What real sales suggest",
     paragraphs: marketParagraphs.filter(Boolean),
-    bullets: me.estimates.map((e) =>
-      `${e.selected ? "→ " : "  "}${e.label}: ${money(e.value)} (${e.confidence} confidence)${e.selected ? " — selected method" : ""}`,
-    ),
   });
 
-  if (yoy) {
-    const vsCounty =
-      yoy.vs_zip_median_pts != null
-        ? yoy.vs_zip_median_pts > 2
-          ? `This parcel's ${pct(yoy.change_pct, true)} increase is ${yoy.vs_zip_median_pts.toFixed(1)} points above its ZIP median — a steeper reappraisal bump than neighbors on average.`
-          : yoy.vs_zip_median_pts < -2
-            ? `This parcel's increase is ${Math.abs(yoy.vs_zip_median_pts).toFixed(1)} points below its ZIP median — a smaller reappraisal bump than neighbors on average.`
-            : "This parcel's reappraisal increase is close to its ZIP median."
-        : "";
+  if (v.verdict !== "unknown" && market != null) {
+    const gapLabel =
+      v.verdict === "over_assessed"
+        ? "County value is higher than sale evidence suggests"
+        : v.verdict === "under_assessed"
+          ? "County value is lower than sale evidence suggests"
+          : "County value and sale evidence are close";
     sections.push({
-      id: "reappraisal",
-      title: "2021 → 2026 reappraisal (separate from market value)",
+      id: "gap",
+      title: "The gap",
       paragraphs: [
-        `Buncombe's 2026 reappraisal raised this parcel from ${money(yoy.value_2021)} (2021-cycle tax roll) to ${money(yoy.value_2026)} (${pct(yoy.change_pct, true)}).`,
-        `County-wide median increase is about +${pct(yoy.county_median_change_pct)}. ZIP ${zip}${yoy.zip_name ? ` (${yoy.zip_name})` : ""} median is about +${pct(yoy.zip_median_change_pct)}.`,
-        vsCounty,
-        "Reappraisal equity measures whether the county applied increases uniformly. It does not tell you what a buyer would pay today — that is the market estimate section above.",
+        gapLabel + ".",
+        v.verdict_summary,
+        v.gap_dollars != null
+          ? `Dollar difference: ${v.gap_dollars > 0 ? "+" : ""}${money(v.gap_dollars)} (${pct(v.variance_pct, true)}).`
+          : "",
       ].filter(Boolean),
     });
   }
 
-  if (v.verdict !== "unknown" && market != null) {
-    sections.push({
-      id: "comparison",
-      title: "County assessment vs. market estimate",
-      paragraphs: [v.verdict_summary],
-      bullets: [
-        `Difference: ${money(v.gap_dollars)} (${pct(v.variance_pct, true)}).`,
-        "Flagged when the gap exceeds ±15%. This compares county value to sales-based evidence — not to the reappraisal percentage alone.",
-        v.variance_pct != null
-          ? `Alignment score: ${Math.max(0, Math.round(100 - Math.min(Math.abs(v.variance_pct) * 2.5, 100)))}/100 — how closely the county assessment matches the market estimate (100 = same; lower = larger gap).`
-          : undefined,
-      ].filter((b): b is string => !!b),
-    });
-  }
+  sections.push({
+    id: "how",
+    title: "How Parcelogik does the math",
+    paragraphs: [],
+    bullets: [
+      "We look at real sales — actual prices from homes bought and sold in Buncombe County.",
+      "We check trusted market trackers to see how fast prices are moving in your neighborhood.",
+      "We compare the county's old values (2021) to the new values (2026) to see who is carrying the heaviest share of growth.",
+    ],
+  });
 
-  const caveatBullets: string[] = [];
-  for (const w of fresh.warnings) {
-    caveatBullets.push(`${w.title}: ${w.detail}`);
-  }
+  const caveatBullets: string[] = fresh.warnings.map((w) => `${w.title}: ${w.detail}`);
   caveatBullets.push(
-    "Parcelogik is not a licensed appraisal. Use this for research, appeals preparation, and policy analysis — not as a single 'true value.'",
+    "Parcelogik is not a licensed appraisal. Use this for research and appeals — not as the one true price.",
   );
 
   sections.push({
     id: "caveats",
-    title: "Important caveats",
+    title: "Good to know",
     paragraphs: fresh.warnings.length
-      ? ["Pay attention to these data quality notes for this parcel:"]
-      : ["No special data warnings for this parcel."],
+      ? ["A few data notes for this property:"]
+      : ["No special warnings for this property."],
     bullets: caveatBullets,
   });
 
@@ -215,7 +257,7 @@ export function buildParcelNarrative(opts: {
     tldr,
     sections,
     disclaimer:
-      `Narrative generated from Buncombe County public records for PIN ${pin}. ` +
-      "All dollar figures trace to Spatialest PRC, tax roll, Register of Deeds sales, or the 2026 reappraisal file.",
+      `Summary from Buncombe County public records for property ID ${pin}. ` +
+      "Dollar figures come from county records, deed sales, or the 2026 new value review file.",
   };
 }

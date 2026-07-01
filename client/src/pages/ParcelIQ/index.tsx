@@ -44,7 +44,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard",       icon: <Building2 className="w-4 h-4" /> },
   { id: "explorer",  label: "Property Search",  icon: <Search className="w-4 h-4" /> },
   { id: "revenue",   label: "Revenue Targeting",icon: <Target className="w-4 h-4" /> },
-  { id: "equity",    label: "Equity Analysis",  icon: <Scale className="w-4 h-4" /> },
+  { id: "equity",    label: "Fairness Check",   icon: <Scale className="w-4 h-4" /> },
   { id: "overrides", label: "Overrides",        icon: <ClipboardList className="w-4 h-4" /> },
   { id: "audit",     label: "Audit Log",        icon: <ClipboardList className="w-4 h-4" /> },
 ];
@@ -101,6 +101,69 @@ function zipEquityRatioStatus(ratio: number): { label: string; badgeClass: strin
   return { label: "Well below sales", badgeClass: "bg-amber-200 text-amber-900 border-amber-300" };
 }
 
+/** Plain-language verdict: home value growth vs county average (new value review). */
+function buildGrowthFairnessVerdict(yoy: Record<string, any>): {
+  emoji: string;
+  label: string;
+  detail: string;
+  homePct: string;
+  countyPct: string;
+} {
+  const home = Number(yoy.change_pct);
+  const county = yoy.county_median_change_pct != null ? Number(yoy.county_median_change_pct) : null;
+  const homePct = `+${home.toFixed(1)}%`;
+  const countyPct = county != null ? `+${county.toFixed(1)}%` : "—";
+
+  if (county == null) {
+    return {
+      emoji: "ℹ️",
+      label: "County average unavailable",
+      detail: "We couldn't load the county-wide average for this review period.",
+      homePct,
+      countyPct,
+    };
+  }
+
+  const diff = +(home - county).toFixed(1);
+  if (Math.abs(diff) <= 2) {
+    return {
+      emoji: "🟢",
+      label: "Right on track",
+      detail:
+        "Your home value grew at about the same speed as the average home in Buncombe County. " +
+        "Your share of the county's \"pizza\" — your piece of the total tax bill — should stay roughly the same.",
+      homePct,
+      countyPct,
+    };
+  }
+  if (diff > 2) {
+    const zipNote =
+      yoy.zip_name && yoy.zip_median_change_pct != null
+        ? ` This is happening in part because ${yoy.zip_name} saw typical growth of about +${Number(yoy.zip_median_change_pct).toFixed(1)}% — ` +
+          (Number(yoy.zip_median_change_pct) > county
+            ? "faster than the county average as buyers move into the area."
+            : "while your specific home still outpaced the county average.")
+        : "";
+    return {
+      emoji: "⚠️",
+      label: "Faster than average",
+      detail:
+        `Your property value grew faster than the county average by about ${diff} percentage points.${zipNote}`,
+      homePct,
+      countyPct,
+    };
+  }
+  return {
+    emoji: "🟢",
+    label: "Slower than average",
+    detail:
+      `Your property value grew slower than the county average by about ${Math.abs(diff)} percentage points. ` +
+      "Your share of the county tax bill may have shrunk relative to owners whose values jumped more.",
+    homePct,
+    countyPct,
+  };
+}
+
 function AssessedValueCell({
   parcel,
 }: {
@@ -153,7 +216,7 @@ function equityRiskLabel(riskLevel: string): string {
 function marketEstimateExplainer(v: Record<string, any> | undefined): string {
   const me = v?.market_estimate;
   if (!me?.value) {
-    return "We don't have enough parcel-specific sales or comparable evidence to produce a market estimate. Compare the county assessment to nearby sales below, or consult a licensed appraiser.";
+    return "We don't have enough nearby sale data to estimate what this home might sell for. Compare the county value to nearby sales below, or talk to a licensed appraiser.";
   }
 
   const range =
@@ -200,7 +263,7 @@ function equityExtrapolationExplainer(v: Record<string, any> | undefined): strin
 }
 
 const MARKET_METHOD_PRIORITY = [
-  { priority: 1, method: "own_sale", title: "This parcel's qualified sale", hint: "Strongest — a verified sale on this PIN" },
+  { priority: 1, method: "own_sale", title: "This home's own sale", hint: "Strongest — a verified sale on record" },
   { priority: 2, method: "comparable_sales", title: "Nearby comparable sales", hint: "Median of sales matched by sq ft, type, and age" },
   { priority: 3, method: "gradient_model", title: "Property characteristics", hint: "Fallback from lot, location, and class" },
 ] as const;
@@ -624,20 +687,28 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
     : 80;
 
   const stats = [
-    { label: "Assessment Ratio",   value: countyPct != null ? `${countyPct.toFixed(1)}%` : "—", sub: "Median assessment ÷ sale (equity study)", color: "border-t-amber-500" },
-    { label: "Total Parcels",      value: "112,847",  sub: "Buncombe County",               color: "border-t-slate-500" },
-    { label: "Total Assessed",     value: "$24.3B",   sub: "Model-derived",                  color: "border-t-green-500" },
-    { label: "Equity Flags",       value: "4,219",    sub: "Properties ±15% off",            color: "border-t-red-500" },
+    { label: "Assessment Ratio",   value: countyPct != null ? `${countyPct.toFixed(1)}%` : "—", sub: "County value vs. actual sale prices", color: "border-t-amber-500" },
+    { label: "Total Properties",   value: "112,847",  sub: "Buncombe County",               color: "border-t-slate-500" },
+    { label: "Total Assessed",     value: "$24.3B",   sub: "County-wide",                    color: "border-t-green-500" },
+    { label: "Big Gaps",           value: "4,219",    sub: "Homes ±15% off from sales",      color: "border-t-red-500" },
   ];
 
   return (
     <div className="space-y-6">
+      <Card className="border border-amber-200 bg-amber-50/40">
+        <CardContent className="py-4 px-4 text-sm text-amber-950 leading-relaxed">
+          <strong>Three questions, plain answers:</strong> What changed in the new value review?
+          Why did it change? Is your increase fair compared to everyone else? Search any address
+          in Property Search for a Then vs. Now breakdown with a clear verdict.
+        </CardContent>
+      </Card>
+
       {/* Assessment-to-market ratio — featured at top */}
       <Card className="border-2 border-amber-400 bg-amber-50/50">
         <CardHeader className="py-3 px-4 pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <TrendingDown className="w-5 h-5 text-amber-700" />
-            Assessment-to-Market Ratio · Buncombe County
+            Assessment vs. Sale Prices · Buncombe County
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-4 pb-4">
@@ -654,11 +725,10 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
           ) : (
             <>
               <p className="text-sm text-amber-950 leading-relaxed">
-                Buncombe County&apos;s median assessment-to-sale ratio is{" "}
+                On average, Buncombe County values homes at about{" "}
                 <strong className="text-lg">{countyPct!.toFixed(1)}%</strong>{" "}
-                across qualified deed sales since 2020. This measures how assessments compare to
-                actual sale prices <em>by ZIP</em> — useful for uniformity and equity analysis, not as a
-                per-parcel market appraisal.
+                of what they actually sold for. That helps answer: is everyone being treated
+                the same, or are some neighborhoods valued differently than others?
               </p>
 
               <div className="h-80 rounded-lg border bg-white p-2 pt-4">
@@ -722,29 +792,28 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
         </CardContent>
       </Card>
 
-      {/* 2021 → 2026 reappraisal cycle */}
+      {/* 2021 → 2026 new value review */}
       <Card className="border-2 border-indigo-300 bg-indigo-50/20">
         <CardHeader className="py-3 px-4 pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-indigo-700" />
-            2021 → 2026 Reappraisal · Buncombe County
+            Then vs. Now · New Value Review (2021 → 2026)
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-4 pb-4">
           {reappraisalLoading ? (
-            <p className="text-sm text-muted-foreground">Loading reappraisal cycle data…</p>
+            <p className="text-sm text-muted-foreground">Loading new value review data…</p>
           ) : !reappraisal?.county ? (
             <p className="text-sm text-muted-foreground">
-              Reappraisal comparison not loaded. Run{" "}
-              <code className="font-mono text-xs">node loadProperty2026.mjs</code> to populate 2026 values.
+              New value review data not loaded yet.
             </p>
           ) : (
             <>
               <p className="text-sm text-indigo-950 leading-relaxed">
-                Across <strong>{reappraisal.county.matched_parcels.toLocaleString()}</strong> matched parcels,
-                the county-wide <strong>median assessment increase is +{reappraisal.county.county_median_change_pct.toFixed(1)}%</strong>{" "}
+                Across <strong>{reappraisal.county.matched_parcels.toLocaleString()}</strong> matched homes,
+                the typical value increase is <strong>+{reappraisal.county.county_median_change_pct.toFixed(1)}%</strong>{" "}
                 (avg ${(reappraisal.county.avg_2021 / 1e6).toFixed(2)}M → ${(reappraisal.county.avg_2026 / 1e6).toFixed(2)}M).
-                Open any parcel in Property Search to see its 2021 baseline and 2026 value side by side.
+                Search any address in Property Search to see its Then vs. Now breakdown.
               </p>
               {reappraisal.zips.length > 0 && (
                 <Table>
@@ -752,8 +821,8 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                     <TableRow className="bg-white/80 hover:bg-white/80">
                       <TableHead>ZIP</TableHead>
                       <TableHead>Area</TableHead>
-                      <TableHead className="text-right">Parcels</TableHead>
-                      <TableHead className="text-right">Median change</TableHead>
+                      <TableHead className="text-right">Homes</TableHead>
+                      <TableHead className="text-right">Typical increase</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -886,7 +955,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between py-3 px-4">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            🏠 Recently Loaded Parcels
+            🏠 Recently Viewed Properties
             <Badge className="bg-green-100 text-green-700 text-[10px]">Live GIS</Badge>
           </CardTitle>
           <Button size="sm" variant="outline" onClick={() => refetch()}>
@@ -900,16 +969,16 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                 <TableHead>PIN</TableHead>
                 <TableHead>Address</TableHead>
                 <TableHead>Owner</TableHead>
-                <TableHead>Assessed</TableHead>
-                <TableHead>Model</TableHead>
-                <TableHead>Variance</TableHead>
+                <TableHead>County Value</TableHead>
+                <TableHead>Sale Estimate</TableHead>
+                <TableHead>The Gap</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                    Loading live parcel data…
+                    Loading properties…
                   </TableCell>
                 </TableRow>
               )}
@@ -1008,14 +1077,14 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
           </h2>
           <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
             Properties with qualified Register of Deeds sales since 2020 that feed the ZIP median ratio.
-            These are the evidence behind the equity study — open any row for a parcel-specific market estimate.
+            These homes are the evidence behind the fairness check — open any row for a full Then vs. Now breakdown.
           </p>
         </div>
         {data?.summary && (
           <div className="text-right shrink-0">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Median ratio</p>
             <p className="text-2xl font-serif font-semibold">{data.summary.medianRatioPct}%</p>
-            <p className="text-xs text-muted-foreground">{data.total} matched parcels</p>
+            <p className="text-xs text-muted-foreground">{data.total} matched properties</p>
           </div>
         )}
       </div>
@@ -1034,7 +1103,7 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
                   A low median assessment ratio here may reflect commercial valuation methods,
                   post–Hurricane Helene recovery policies, or which properties happened to sell
                   recently — not necessarily the same pattern as residential neighborhoods.
-                  Review individual parcels below to see what is driving the ZIP median.
+                  Review individual properties below to see what is driving the ZIP median.
                 </p>
               </div>
             </div>
@@ -1197,7 +1266,7 @@ function ExplorerSearchView() {
     <div className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold">Property Explorer</h2>
-        <p className="text-sm text-muted-foreground">Live search across Buncombe County's 112,847 parcels.</p>
+        <p className="text-sm text-muted-foreground">Live search across Buncombe County&apos;s 112,847 properties.</p>
       </div>
 
       {/* Search bar */}
@@ -1243,9 +1312,10 @@ function ExplorerSearchView() {
               <TableRow>
                 <TableHead>PIN</TableHead><TableHead>Address</TableHead>
                 <TableHead>Owner</TableHead><TableHead>Acres</TableHead>
-                <TableHead>County Assessed</TableHead><TableHead>Model Value</TableHead>
-                <TableHead>Variance</TableHead>
-                <TableHead title="How closely county assessment aligns with market estimate (100 = match)">Alignment</TableHead>
+                <TableHead>County Value</TableHead>
+                <TableHead>Sale Estimate</TableHead>
+                <TableHead>The Gap</TableHead>
+                <TableHead title="How closely county value matches sale evidence (100 = match)">Match</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -1260,7 +1330,7 @@ function ExplorerSearchView() {
               {!isLoading && !data?.parcels.length && (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
-                    No parcels found. Try a different search.
+                    No properties found. Try a different search.
                   </TableCell>
                 </TableRow>
               )}
@@ -1333,7 +1403,7 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
     return <p className="text-sm text-muted-foreground py-8 text-center">Loading valuation detail… fetching live Spatialest PRC when available.</p>;
   }
   if (!data) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">No detail returned for this parcel.</p>;
+    return <p className="text-sm text-muted-foreground py-8 text-center">No detail returned for this property.</p>;
   }
   return <ParcelDetailBody data={data as Record<string, any>} />;
 }
@@ -1347,7 +1417,7 @@ function ParcelNarrativePanel({ narrative }: { narrative: Record<string, any> })
       <CardHeader className="py-3 px-4 pb-2">
         <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-950">
           <BookOpen className="w-4 h-4 text-amber-700" />
-          Plain-English summary
+          Plain-English walkthrough
         </CardTitle>
         <p className="text-sm font-serif text-slate-900 mt-2 leading-relaxed">
           {narrative.headline}
@@ -1395,80 +1465,85 @@ function ParcelNarrativePanel({ narrative }: { narrative: Record<string, any> })
   );
 }
 
-function ReappraisalYoYPanel({ yoy }: { yoy: Record<string, any> }) {
+function ThenVsNowPanel({
+  address,
+  yoy,
+}: {
+  address: string;
+  yoy: Record<string, any>;
+}) {
   const pct = Number(yoy.change_pct);
   const pctLabel = `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
-  const vsZip = yoy.vs_zip_median_pts as number | null;
-  const vsZipLabel =
-    vsZip == null
-      ? null
-      : vsZip > 2
-        ? `${vsZip.toFixed(1)} pts above typical ZIP reappraisal`
-        : vsZip < -2
-          ? `${Math.abs(vsZip).toFixed(1)} pts below typical ZIP reappraisal`
-          : "Near typical ZIP reappraisal";
+  const perHundred = Math.round(100 + pct);
+  const fairness = buildGrowthFairnessVerdict(yoy);
 
   return (
-    <Card className="border-2 border-indigo-200 bg-indigo-50/30">
+    <Card className="border-2 border-indigo-300 bg-indigo-50/30">
       <CardHeader className="py-3 px-4 pb-2">
-        <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-indigo-700" />
-          2021 → 2026 Reappraisal
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-indigo-700" />
+          Then vs. Now — New Value Review
         </CardTitle>
-        <p className="text-xs text-muted-foreground mt-1">
-          Buncombe County tax roll baseline (2021 cycle) vs. 2026 reappraisal file — separate from market estimate.
-        </p>
+        <p className="text-sm font-medium text-indigo-950 mt-1">{address}</p>
       </CardHeader>
-      <CardContent className="px-4 pb-4 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
-          <div className="rounded-lg border bg-white p-4 text-center">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">2021 baseline</div>
-            <div className="text-xl font-serif font-semibold mt-1">{fmt(yoy.value_2021)}</div>
-            <div className="text-[10px] text-muted-foreground mt-1">Prior cycle tax roll</div>
+      <CardContent className="px-4 pb-4 space-y-5">
+        {/* Timeline */}
+        <div className="relative pl-6 border-l-2 border-indigo-300 space-y-6">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Then — 2021</p>
+            <p className="text-sm text-slate-700 mt-0.5">What the county said your home was worth:</p>
+            <p className="text-2xl font-serif font-semibold text-indigo-950 mt-1">{fmt(yoy.value_2021)}</p>
           </div>
-          <div className="rounded-lg border-2 border-indigo-300 bg-indigo-50 p-4 text-center flex flex-col justify-center">
-            <div className="text-[10px] uppercase tracking-wide text-indigo-800 font-medium">Change</div>
-            <div className="text-2xl font-serif font-semibold mt-1 text-indigo-950">{pctLabel}</div>
-            <div className="text-xs text-indigo-800 mt-1">
-              {yoy.change_amt > 0 ? "+" : ""}{fmt(yoy.change_amt)}
-            </div>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">Now — 2026</p>
+            <p className="text-sm text-slate-700 mt-0.5">What the county says it is worth today:</p>
+            <p className="text-2xl font-serif font-semibold text-indigo-950 mt-1">{fmt(yoy.value_2026)}</p>
           </div>
-          <div className="rounded-lg border bg-white p-4 text-center">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">2026 reappraisal</div>
-            <div className="text-xl font-serif font-semibold mt-1">{fmt(yoy.value_2026)}</div>
-            <div className="text-[10px] text-muted-foreground mt-1">2026 county file</div>
+          <div className="rounded-lg border-2 border-indigo-400 bg-white p-4 -ml-6 pl-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">The change</p>
+            <p className="text-2xl font-serif font-semibold mt-1 text-indigo-950">{pctLabel}</p>
+            <p className="text-sm text-indigo-900 mt-1">
+              {yoy.change_amt > 0 ? "+" : ""}{fmt(yoy.change_amt)} — your property value went up by {pctLabel.replace("+", "")}
+            </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-[11px]">
-          {yoy.zip_name && (
-            <span className="bg-white border rounded px-2 py-1">
-              ZIP {yoy.zipcode} ({yoy.zip_name})
-              {yoy.zip_median_change_pct != null && (
-                <> · typical reappraisal <strong>+{Number(yoy.zip_median_change_pct).toFixed(1)}%</strong> in this ZIP</>
-              )}
-            </span>
-          )}
-          {yoy.county_median_change_pct != null && (
-            <span className="bg-white border rounded px-2 py-1">
-              County typical reappraisal <strong>+{Number(yoy.county_median_change_pct).toFixed(1)}%</strong>
-            </span>
-          )}
-          {vsZipLabel && (
-            <span className={`border rounded px-2 py-1 ${
-              vsZip != null && vsZip > 2
-                ? "bg-amber-50 border-amber-200 text-amber-900"
-                : vsZip != null && vsZip < -2
-                  ? "bg-green-50 border-green-200 text-green-900"
-                  : "bg-white"
-            }`}>
-              This parcel: {vsZipLabel}
-            </span>
-          )}
-          {yoy.neighborhood_code && (
-            <span className="bg-white border rounded px-2 py-1 text-muted-foreground">
-              Neighborhood {yoy.neighborhood_code}
-            </span>
+        <div className="rounded-lg border bg-white px-4 py-3 text-sm text-slate-700 leading-relaxed">
+          <p className="font-semibold text-slate-900 mb-1">What does this mean?</p>
+          <p>
+            According to the county&apos;s math, for every $100 your home was worth five years ago,
+            it is now worth about <strong>${perHundred}</strong>. That mirrors what has been
+            happening in the housing market across our area.
+          </p>
+        </div>
+
+        {/* Fairness speedometer */}
+        <div className={`rounded-lg border-2 px-4 py-4 ${
+          fairness.label === "Faster than average"
+            ? "bg-amber-50 border-amber-300"
+            : "bg-green-50 border-green-300"
+        }`}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-3">
+            Is it fair compared to everyone else?
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3 mb-4">
+            <div className="rounded-md bg-white/80 border px-3 py-2 text-center">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Your home&apos;s growth</p>
+              <p className="text-xl font-serif font-semibold mt-0.5">{fairness.homePct}</p>
+            </div>
+            <div className="rounded-md bg-white/80 border px-3 py-2 text-center">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">County average</p>
+              <p className="text-xl font-serif font-semibold mt-0.5">{fairness.countyPct}</p>
+            </div>
+          </div>
+          <p className="text-sm font-semibold text-slate-900">
+            {fairness.emoji} Verdict: {fairness.label}
+          </p>
+          <p className="text-sm text-slate-700 mt-1 leading-relaxed">{fairness.detail}</p>
+          {yoy.zip_name && yoy.zip_median_change_pct != null && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Typical growth in {yoy.zip_name} (ZIP {yoy.zipcode}): +{Number(yoy.zip_median_change_pct).toFixed(1)}%
+            </p>
           )}
         </div>
       </CardContent>
@@ -1498,26 +1573,31 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
   const warnings = (freshness?.warnings as Array<Record<string, string>> | undefined) ?? [];
   const reappraisalYoY = data.reappraisal_yoy as Record<string, any> | null | undefined;
   const narrative = data.narrative as Record<string, any> | undefined;
+  const address = String(data.SITEADDRESS ?? "This property");
 
   return (
     <div className="space-y-5">
-      {/* Headline — three boxes first */}
+      {reappraisalYoY && <ThenVsNowPanel address={address} yoy={reappraisalYoY} />}
+
+      {narrative && <ParcelNarrativePanel narrative={narrative} />}
+
+      {/* Three key numbers */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 p-4 text-center">
-          <div className="text-xs text-blue-900 font-medium uppercase tracking-wide">County Assessment</div>
+          <div className="text-xs text-blue-900 font-medium uppercase tracking-wide">County Tax Value</div>
           <div className="text-2xl font-serif font-semibold mt-1 text-blue-950">{fmt(assessed)}</div>
           <div className="text-[10px] text-muted-foreground mt-1">
-            {prc ? "Spatialest PRC (live)" : "Tax roll snapshot"}
+            {prc ? "Live county record" : "County file snapshot"}
           </div>
           {prc && taxRoll != null && taxRoll !== assessed && (
             <div className="text-[10px] text-amber-800 mt-1 leading-snug">
-              Prior tax roll: {fmt(taxRoll)}
-              <span className="block text-amber-700/90">Older bulk county file before live PRC caught up to 2026 reappraisal</span>
+              Older county file: {fmt(taxRoll)}
+              <span className="block text-amber-700/90">Updated when the county published new values</span>
             </div>
           )}
         </div>
         <div className="rounded-lg border-2 border-slate-800 p-4 text-center bg-slate-900 text-white shadow-lg">
-          <div className="text-xs text-amber-300 font-medium uppercase tracking-wide">Market Estimate</div>
+          <div className="text-xs text-amber-300 font-medium uppercase tracking-wide">What Sales Suggest</div>
           <div className="text-2xl font-serif font-semibold mt-1">{fmt(fairValue)}</div>
           <div className="text-[10px] text-slate-300 mt-1">
             {marketEst?.method_label ?? "Parcel-specific evidence"}
@@ -1534,7 +1614,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         <div className={`rounded-lg border-2 p-4 text-center ${
           Math.abs(varPct ?? 0) > 15 ? "bg-red-50 border-red-300" : "bg-green-50 border-green-300"
         }`}>
-          <div className="text-xs text-muted-foreground uppercase tracking-wide">vs. Market Estimate</div>
+          <div className="text-xs text-muted-foreground uppercase tracking-wide">The Gap</div>
           <div className={`text-2xl font-serif font-semibold mt-1 ${
             Math.abs(varPct ?? 0) > 15 ? "text-red-700" : "text-green-700"
           }`}>
@@ -1542,21 +1622,16 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           </div>
           {v?.gap_dollars != null && (
             <div className="text-[10px] text-muted-foreground mt-1">
-              {v.gap_dollars > 0 ? "+" : ""}{fmt(v.gap_dollars)} vs estimate
+              {v.gap_dollars > 0 ? "+" : ""}{fmt(v.gap_dollars)} difference
             </div>
           )}
           {data.equity_score != null && (
             <div className="text-[10px] text-muted-foreground mt-2 pt-2 border-t border-black/5 leading-snug">
-              Alignment {data.equity_score}/100 — how close county and market estimates are
-              (100 = agree; lower = farther apart)
+              Match score {data.equity_score}/100 — how close county value and sale evidence are
             </div>
           )}
         </div>
       </div>
-
-      {narrative && <ParcelNarrativePanel narrative={narrative} />}
-
-      {reappraisalYoY && <ReappraisalYoYPanel yoy={reappraisalYoY} />}
 
       {v?.verdict_label && (
         <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
@@ -1611,14 +1686,14 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
       {v?.comparable_sales?.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            This parcel&apos;s qualified sales
+            This home&apos;s recent sales
           </p>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Sale Date</TableHead>
                 <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">vs Assessment</TableHead>
+                <TableHead className="text-right">vs County Value</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1978,28 +2053,26 @@ function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Equity Analysis</h2>
+        <h2 className="text-lg font-semibold">Fairness Check</h2>
         <p className="text-sm text-muted-foreground">
-          Sales ratio study by ZIP — measures whether assessments are applied uniformly relative to
-          qualified deed sales. This is an <strong>equity / uniformity</strong> view, not a per-parcel
-          market appraisal. Click a ZIP to inspect the matched properties.
+          Is everyone being treated the same? This compares county values to actual sale prices
+          neighborhood by neighborhood. Click a ZIP to see the homes behind the numbers.
         </p>
       </div>
 
       {data?.summary && (
         <Card className="border-2 border-amber-400 bg-amber-50/50">
           <CardContent className="pt-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Assessment equity spread</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Fairness gap between neighborhoods</p>
             <p className="text-2xl font-serif font-semibold mt-1 text-amber-950">
-              {data.summary.ratioSpreadPct} percentage point gap
+              {data.summary.ratioSpreadPct} percentage point difference
             </p>
             <p className="text-sm text-amber-900 mt-2 leading-relaxed">
-              Between ZIPs, the median assessment-to-sale ratio varies by{" "}
+              Between ZIPs, the typical county-value-to-sale-price ratio varies by{" "}
               <strong>{data.summary.ratioSpreadPct} percentage points</strong> — from{" "}
-              {(data.summary.minRatio * 100).toFixed(1)}% ({data.summary.minRatio.toFixed(3)}) to{" "}
-              {(data.summary.maxRatio * 100).toFixed(1)}% ({data.summary.maxRatio.toFixed(3)}).
-              A wider spread suggests assessments may not be applied uniformly across neighborhoods.
-              Parcel detail pages use comparable sales for market estimates — not this ZIP-wide extrapolation.
+              {(data.summary.minRatio * 100).toFixed(1)}% to{" "}
+              {(data.summary.maxRatio * 100).toFixed(1)}%.
+              A bigger gap means some neighborhoods may be valued differently than others.
             </p>
           </CardContent>
         </Card>
@@ -2039,7 +2112,7 @@ function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                   </TableHead>
                   <TableHead className="text-right">
                     <button type="button" className="font-semibold hover:underline ml-auto" onClick={() => toggleSort("medianVariancePct")}>
-                      Variance{sortIndicator("medianVariancePct")}
+                      The Gap{sortIndicator("medianVariancePct")}
                     </button>
                   </TableHead>
                   <TableHead className="text-right">
@@ -2193,7 +2266,7 @@ function SubmitOverrideDialog({ onSuccess }: { onSuccess: () => void }) {
           ⚠ Requires supervisor approval. Permanently logged.
         </div>
         <div className="space-y-3">
-          <div><Label>Parcel PIN</Label><Input value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="e.g. 9634528801" /></div>
+          <div><Label>Property ID (PIN)</Label><Input value={pin} onChange={(e)=>setPin(e.target.value)} placeholder="e.g. 9634528801" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Current Assessment ($)</Label><Input type="number" value={curr} onChange={(e)=>setCurr(e.target.value)} /></div>
             <div><Label>Proposed Value ($)</Label><Input type="number" value={prop} onChange={(e)=>setProp(e.target.value)} /></div>
