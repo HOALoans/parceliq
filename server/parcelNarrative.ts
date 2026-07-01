@@ -41,33 +41,34 @@ function fairnessVerdict(yoy: ReappraisalYoY): { emoji: string; label: string; d
   if (Math.abs(diff) <= 2) {
     return {
       emoji: "🟢",
-      label: "Right on track",
+      label: "In line with county median",
       detail:
-        `Your home value grew at about the same speed as the average home in Buncombe County (+${pct(county)}). ` +
-        `Your share of the county's "pizza" — your piece of the total tax bill — should stay roughly the same.`,
+        `Your home's value change (+${pct(home, true)}) is close to the county median (+${pct(county)}) for this review cycle — ` +
+        `consistent with how assessors aim to apply updates uniformly across properties.`,
     };
   }
   if (diff > 2) {
     const zipNote =
       yoy.zip_name && yoy.zip_median_change_pct != null
-        ? ` Your area (${yoy.zip_name}) saw a typical increase of about +${pct(yoy.zip_median_change_pct)}.`
+        ? ` Typical change in ${yoy.zip_name}: +${pct(yoy.zip_median_change_pct)}.`
         : "";
     return {
-      emoji: "⚠️",
-      label: "Faster than average",
+      emoji: "ℹ️",
+      label: "Above county median",
       detail:
-        `Your property value grew faster than the county average by about ${diff} percentage points ` +
-        `(your home: +${pct(home, true)} vs county average: +${pct(county)}).${zipNote} ` +
-        `That can mean your share of the county tax bill grew more than many neighbors — worth a closer look.`,
+        `Your home's increase is about ${diff} percentage points above the county median ` +
+        `(your home: +${pct(home, true)} vs county median: +${pct(county)}).${zipNote} ` +
+        `This may reflect neighborhood market strength or property-specific factors in the assessor's file. ` +
+        `The county's formal appeal process is available if you believe the value needs adjustment.`,
     };
   }
   return {
-    emoji: "🟢",
-    label: "Slower than average",
+    emoji: "ℹ️",
+    label: "Below county median",
     detail:
-      `Your property value grew slower than the county average by about ${Math.abs(diff)} percentage points ` +
-      `(your home: +${pct(home, true)} vs county average: +${pct(county)}). ` +
-      `Your share of the county tax bill may have shrunk relative to owners whose values jumped more.`,
+      `Your home's increase is about ${Math.abs(diff)} percentage points below the county median ` +
+      `(your home: +${pct(home, true)} vs county median: +${pct(county)}). ` +
+      `Your assessed share of countywide growth is lower than the typical property this cycle.`,
   };
 }
 
@@ -98,12 +99,12 @@ export function buildParcelNarrative(opts: {
     yoy
       ? `New value review: ${money(yoy.value_2021)} in 2021 → ${money(yoy.value_2026)} now (+${pct(yoy.change_pct, true)}).`
       : null,
-    "These are separate questions — we show each one clearly instead of blending them into one magic number.",
+    "These are separate lenses on the same property — we show each one clearly rather than blending them into a single headline figure.",
   ].filter((s): s is string => !!s);
 
   let headline: string;
   if (yoy) {
-    headline = `${address} — the county raised its value from ${money(yoy.value_2021)} to ${money(yoy.value_2026)} (+${pct(yoy.change_pct, true)}).`;
+    headline = `${address} — the assessor's value changed from ${money(yoy.value_2021)} to ${money(yoy.value_2026)} (+${pct(yoy.change_pct, true)}) in the latest review.`;
   } else if (market == null) {
     headline = `${address} — county value is ${money(assessed)}; we need more sale data to estimate market price.`;
   } else if (v.verdict === "over_assessed") {
@@ -118,13 +119,13 @@ export function buildParcelNarrative(opts: {
 
   sections.push({
     id: "why",
-    title: "Why property values change (the pizza slice)",
+    title: "Why values change in a review cycle",
     paragraphs: [
-      "Think of the county budget like a giant pizza ordered for a party, and your tax bill is your share of the cost. " +
-        "The county isn't trying to make the pizza bigger to trick you — it's trying to figure out how big your slice should be " +
-        "based on how your home compares to everyone else's.",
-      "If your neighborhood suddenly became the most popular spot in town, your slice got bigger — you pay a bit more of the total bill. " +
-        "Someone in a neighborhood that didn't change as much pays less.",
+      "Assessor offices periodically update property values to reflect market changes since the last cycle. " +
+        "The goal is uniformity — applying the same standards so similar properties are treated similarly, " +
+        "and values stay aligned with real estate trends across the county.",
+      "When home prices rise faster in one neighborhood than another, assessed values typically adjust accordingly. " +
+        "That is the assessor's mandated work, not an arbitrary increase — and Parcelogik shows the underlying numbers so owners can follow it.",
     ],
   });
 
@@ -145,10 +146,10 @@ export function buildParcelNarrative(opts: {
 
     sections.push({
       id: "fairness",
-      title: "Is it fair compared to everyone else?",
+      title: "How does this compare countywide?",
       paragraphs: [
         `${verdict.emoji} ${verdict.label}. ${verdict.detail}`,
-        `Your home's growth: +${pct(yoy.change_pct)}. County average: +${pct(yoy.county_median_change_pct)}.`,
+        `Your home's growth: +${pct(yoy.change_pct)}. County median: +${pct(yoy.county_median_change_pct)}.`,
         yoy.zip_name && yoy.zip_median_change_pct != null
           ? `Typical growth in ${yoy.zip_name} (ZIP ${yoy.zipcode}): +${pct(yoy.zip_median_change_pct)}.`
           : "",
@@ -234,13 +235,13 @@ export function buildParcelNarrative(opts: {
     bullets: [
       "We look at real sales — actual prices from homes bought and sold in Buncombe County.",
       "We check trusted market trackers to see how fast prices are moving in your neighborhood.",
-      "We compare the county's old values (2021) to the new values (2026) to see who is carrying the heaviest share of growth.",
+      "We compare the county's prior-cycle values (2021) to the new review values (2026) to show how growth was distributed.",
     ],
   });
 
   const caveatBullets: string[] = fresh.warnings.map((w) => `${w.title}: ${w.detail}`);
   caveatBullets.push(
-    "Parcelogik is not a licensed appraisal. Use this for research and appeals — not as the one true price.",
+    "Parcelogik is not a licensed appraisal. It supplements — not replaces — the assessor's official determination.",
   );
 
   sections.push({

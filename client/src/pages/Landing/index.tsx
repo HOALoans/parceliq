@@ -10,14 +10,13 @@ import {
   FileSearch,
   Layers,
   MapPin,
-  CheckCircle2,
-  Pizza,
+  Handshake,
 } from "lucide-react";
 
 const DATA_SOURCES = [
   {
     title: "County property records",
-    detail: "Official land, building, and total values from Buncombe County — what your tax bill is based on.",
+    detail: "Official land, building, and total values from the assessor's office — the basis for your tax bill.",
   },
   {
     title: "Real home sales",
@@ -51,7 +50,7 @@ const COUNTIES = [
     name: "Your county",
     state: "Coming soon",
     status: "planned" as const,
-    blurb: "Parcelogik is built to onboard new counties with the same clear, honest approach.",
+    blurb: "Parcelogik is designed to work alongside assessor offices — same clear methodology, local data.",
     stats: ["Multi-county ready", "Contact us"],
   },
 ];
@@ -98,7 +97,7 @@ export default function LandingPage() {
               Parcel<span className="text-amber-400">ogik</span>
               <span className="text-slate-400 font-sans text-sm font-normal">.com</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">Property tax clarity for real people</p>
+            <p className="text-xs text-slate-400 mt-0.5">Transparent property assessment, built with assessors</p>
           </div>
           <BuncombeLink>
             <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold">
@@ -112,14 +111,15 @@ export default function LandingPage() {
       <section className="bg-slate-900 text-white px-6 py-16 sm:py-20">
         <div className="max-w-3xl mx-auto text-center space-y-6">
           <p className="text-amber-400 text-sm font-medium uppercase tracking-widest">
-            What changed · Why it changed · Is it fair?
+            What changed · Why it changed · How does it compare?
           </p>
           <h2 className="text-3xl sm:text-4xl font-serif font-semibold leading-tight tracking-tight">
-            Your property taxes shouldn&apos;t feel like a spreadsheet mystery.
+            Clear answers from the same data assessors use.
           </h2>
           <p className="text-slate-300 text-lg leading-relaxed">
-            Parcelogik turns county data into plain answers: what your home is worth on paper,
-            how that changed since 2021, and whether your increase is in line with everyone else.
+            Parcelogik helps property owners understand county values — what changed in the latest
+            review, how market trends factor in, and how a specific home compares to countywide
+            benchmarks. We support assessor transparency, not second-guessing their work.
           </p>
           <div className="flex flex-wrap justify-center gap-3 pt-2">
             <BuncombeLink>
@@ -131,25 +131,27 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Pizza analogy — the "why" */}
+      {/* Why value reviews happen — respectful of assessor process */}
       <section className="px-6 py-14 max-w-5xl mx-auto w-full">
-        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-8 sm:p-10">
+        <div className="rounded-xl border-2 border-slate-200 bg-white p-8 sm:p-10 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <Pizza className="w-6 h-6 text-amber-700" />
+            <Handshake className="w-6 h-6 text-amber-700" />
             <h3 className="text-2xl font-serif font-semibold text-slate-900">
-              The pizza slice — why values change
+              Built to support assessor offices
             </h3>
           </div>
           <p className="text-slate-700 leading-relaxed text-lg">
-            Think of the county budget like a <strong>giant pizza ordered for a party</strong>, and your
-            tax bill is your share of the cost. The county isn&apos;t trying to make the pizza bigger
-            just to trick you — it&apos;s trying to figure out how big <em>your slice</em> should be
-            based on how your home compares to everyone else&apos;s.
+            Property assessment is a demanding public service. Assessor offices must value tens of
+            thousands of properties using consistent rules, public records, and periodic market
+            updates — often with limited staff and constant public scrutiny.
           </p>
           <p className="text-slate-700 leading-relaxed mt-4">
-            If your neighborhood suddenly became the most popular spot in town, your slice got bigger —
-            you pay a bit more of the total bill. Someone in a neighborhood that didn&apos;t change as
-            much pays less. That&apos;s the whole story behind the 2021 → 2026 new value review.
+            Parcelogik is designed as a <strong>transparency layer</strong>, not a replacement. We
+            surface the same county records, deed sales, and review-cycle data assessors rely on,
+            explained in plain language so owners can see <em>what</em> changed, <em>why</em> it
+            changed, and <em>how</em> their home compares to county benchmarks. Our goal is to
+            reduce confusion, support informed appeals, and help assessor offices communicate their
+            work more clearly.
           </p>
         </div>
       </section>
@@ -164,11 +166,11 @@ export default function LandingPage() {
             },
             {
               title: "Why did it change?",
-              text: "We connect county math to what actually happened in the housing market, so the numbers make sense.",
+              text: "We connect the assessor's updated values to market trends, so owners can follow the logic behind a value review.",
             },
             {
-              title: "Is it fair?",
-              text: "Compare your home's growth to the county average and your neighbors. Get a clear verdict — not jargon.",
+              title: "How does it compare?",
+              text: "See how your home's change lines up with the county median and your neighborhood — the same benchmarks assessors use for uniformity.",
             },
           ].map(({ title, text }) => (
             <div key={title} className="space-y-2">
@@ -184,7 +186,7 @@ export default function LandingPage() {
         <div className="text-center mb-10">
           <h3 className="text-2xl font-serif font-semibold">Where we get the numbers</h3>
           <p className="text-muted-foreground mt-2 max-w-2xl mx-auto">
-            Multiple sources, each with a clear job — nothing hidden behind one magic figure.
+            Multiple sources, each with a clear role — presented openly, not collapsed into one headline number.
           </p>
         </div>
         <div className="grid sm:grid-cols-2 gap-4">
@@ -225,7 +227,7 @@ export default function LandingPage() {
               {
                 n: 3,
                 title: "We compare the two timelines",
-                sub: "The county's 2021 values vs. the new 2026 values — to see who is carrying the heaviest share of growth.",
+                sub: "We compare the county's prior-cycle values to the new review to show how growth was distributed across the county.",
               },
             ].map(({ n, title, sub }) => (
               <li key={n} className="flex gap-4 items-start">
@@ -250,7 +252,7 @@ export default function LandingPage() {
           </h3>
           <p className="text-slate-600 leading-relaxed max-w-3xl mb-6">
             Buncombe&apos;s latest value review is live in Parcelogik. Look up any address to see
-            Then vs. Now — and whether your home&apos;s growth matches the county average.
+            Then vs. Now — and how your home&apos;s change compares to county benchmarks.
           </p>
           <div className="grid sm:grid-cols-3 gap-4 text-center">
             {[
@@ -341,7 +343,7 @@ export default function LandingPage() {
 
       <footer className="bg-slate-900 text-slate-400 px-6 py-8 text-center text-xs">
         <p>
-          Parcelogik.com · Property tax clarity · Not a licensed appraisal ·{" "}
+          Parcelogik.com · Transparent assessment data · Not a licensed appraisal ·{" "}
           <BuncombeLink className="text-amber-400 hover:underline">
             Buncombe County
           </BuncombeLink>

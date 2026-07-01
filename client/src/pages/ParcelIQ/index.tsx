@@ -101,7 +101,7 @@ function zipEquityRatioStatus(ratio: number): { label: string; badgeClass: strin
   return { label: "Well below sales", badgeClass: "bg-amber-200 text-amber-900 border-amber-300" };
 }
 
-/** Plain-language verdict: home value growth vs county average (new value review). */
+/** Plain-language comparison: home value growth vs county median (new value review). */
 function buildGrowthFairnessVerdict(yoy: Record<string, any>): {
   emoji: string;
   label: string;
@@ -128,10 +128,10 @@ function buildGrowthFairnessVerdict(yoy: Record<string, any>): {
   if (Math.abs(diff) <= 2) {
     return {
       emoji: "🟢",
-      label: "Right on track",
+      label: "In line with county median",
       detail:
-        "Your home value grew at about the same speed as the average home in Buncombe County. " +
-        "Your share of the county's \"pizza\" — your piece of the total tax bill — should stay roughly the same.",
+        "Your home's value change is close to the county median for this review cycle — " +
+        "consistent with how assessors aim to apply updates uniformly across properties.",
       homePct,
       countyPct,
     };
@@ -139,26 +139,25 @@ function buildGrowthFairnessVerdict(yoy: Record<string, any>): {
   if (diff > 2) {
     const zipNote =
       yoy.zip_name && yoy.zip_median_change_pct != null
-        ? ` This is happening in part because ${yoy.zip_name} saw typical growth of about +${Number(yoy.zip_median_change_pct).toFixed(1)}% — ` +
-          (Number(yoy.zip_median_change_pct) > county
-            ? "faster than the county average as buyers move into the area."
-            : "while your specific home still outpaced the county average.")
+        ? ` Typical change in ${yoy.zip_name}: +${Number(yoy.zip_median_change_pct).toFixed(1)}%.`
         : "";
     return {
-      emoji: "⚠️",
-      label: "Faster than average",
+      emoji: "ℹ️",
+      label: "Above county median",
       detail:
-        `Your property value grew faster than the county average by about ${diff} percentage points.${zipNote}`,
+        `Your home's increase is about ${diff} percentage points above the county median.${zipNote} ` +
+        "This may reflect neighborhood market trends or property-specific factors in the assessor's file. " +
+        "The county's formal appeal process is available if you believe an adjustment is needed.",
       homePct,
       countyPct,
     };
   }
   return {
-    emoji: "🟢",
-    label: "Slower than average",
+    emoji: "ℹ️",
+    label: "Below county median",
     detail:
-      `Your property value grew slower than the county average by about ${Math.abs(diff)} percentage points. ` +
-      "Your share of the county tax bill may have shrunk relative to owners whose values jumped more.",
+      `Your home's increase is about ${Math.abs(diff)} percentage points below the county median. ` +
+      "Your assessed share of countywide growth is lower than the typical property this cycle.",
     homePct,
     countyPct,
   };
@@ -698,8 +697,8 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
       <Card className="border border-amber-200 bg-amber-50/40">
         <CardContent className="py-4 px-4 text-sm text-amber-950 leading-relaxed">
           <strong>Three questions, plain answers:</strong> What changed in the new value review?
-          Why did it change? Is your increase fair compared to everyone else? Search any address
-          in Property Search for a Then vs. Now breakdown with a clear verdict.
+          Why did it change? How does your home compare to county benchmarks? Search any address
+          in Property Search for a Then vs. Now breakdown with countywide context.
         </CardContent>
       </Card>
 
@@ -1524,7 +1523,7 @@ function ThenVsNowPanel({
             : "bg-green-50 border-green-300"
         }`}>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-3">
-            Is it fair compared to everyone else?
+            How does this compare countywide?
           </p>
           <div className="grid sm:grid-cols-2 gap-3 mb-4">
             <div className="rounded-md bg-white/80 border px-3 py-2 text-center">
@@ -1532,12 +1531,12 @@ function ThenVsNowPanel({
               <p className="text-xl font-serif font-semibold mt-0.5">{fairness.homePct}</p>
             </div>
             <div className="rounded-md bg-white/80 border px-3 py-2 text-center">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">County average</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">County median</p>
               <p className="text-xl font-serif font-semibold mt-0.5">{fairness.countyPct}</p>
             </div>
           </div>
           <p className="text-sm font-semibold text-slate-900">
-            {fairness.emoji} Verdict: {fairness.label}
+            {fairness.emoji} {fairness.label}
           </p>
           <p className="text-sm text-slate-700 mt-1 leading-relaxed">{fairness.detail}</p>
           {yoy.zip_name && yoy.zip_median_change_pct != null && (
