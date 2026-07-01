@@ -1493,7 +1493,15 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
                       <Badge variant="outline" className="mt-1 text-[10px] py-0">Likely commercial</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-mono text-sm">{fmt(p.assessed)}</TableCell>
+                  <TableCell className="text-right">
+                    <AssessedValueCell
+                      parcel={{
+                        TOTALVALUE: p.assessed,
+                        tax_roll_value: p.taxRollValue,
+                        assessment_source: p.assessmentSource,
+                      }}
+                    />
+                  </TableCell>
                   <TableCell className="text-right font-mono text-sm">{fmt(p.salePrice)}</TableCell>
                   <TableCell className="text-right font-mono text-xs">{p.sellDate ?? "—"}</TableCell>
                   <TableCell className={`text-right font-mono text-sm font-semibold ${

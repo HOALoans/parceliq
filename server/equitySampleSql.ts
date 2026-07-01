@@ -1,4 +1,8 @@
 /** SQL fragments shared with jobs/lib/equityCompute.mjs cohort logic. */
+
+/** County appraised (PRC) when cached; otherwise tax roll — matches property detail view. */
+export const EFFECTIVE_ASSESSED_SQL = `COALESCE(NULLIF(p.prc_total_value, 0), p.total_value)`;
+
 export const EQUITY_SAMPLE_SALES_SUBQUERY = `
   SELECT DISTINCT ON (pin) pin, selling_price, sell_date
   FROM parceliq_sales
@@ -10,7 +14,7 @@ export const EQUITY_SAMPLE_SALES_SUBQUERY = `
 export const EQUITY_SAMPLE_JOIN = `
   FROM parceliq_parcels p
   INNER JOIN (${EQUITY_SAMPLE_SALES_SUBQUERY}) s ON s.pin = p.pin
-  WHERE p.total_value > 10000
+  WHERE ${EFFECTIVE_ASSESSED_SQL} > 10000
     AND p.postal_code IS NOT NULL AND p.postal_code != ''
-    AND CAST(p.total_value AS FLOAT) / NULLIF(s.selling_price, 0) BETWEEN 0.1 AND 5.0
+    AND CAST(${EFFECTIVE_ASSESSED_SQL} AS FLOAT) / NULLIF(s.selling_price, 0) BETWEEN 0.1 AND 5.0
 `;

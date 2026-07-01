@@ -14,7 +14,7 @@ import { fetchReappraisalYoY, fetchReappraisalSummary } from "./reappraisalYoY.j
 import { fetchReappraisalTaxEquity } from "./reappraisalTaxEquity.js";
 import { buildParcelNarrative } from "./parcelNarrative.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
-import { EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
+import { EFFECTIVE_ASSESSED_SQL, EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
 import { resolveSitusZipForParcel } from "./situsZip.js";
 import {
   fetchCachedMarketIndexRow,
@@ -469,9 +469,12 @@ export const parceliqRouter = router({
           [input.zip],
         ),
         pool.query(
-          `SELECT p.pin, p.address, p.owner_name, p.postal_code, p.total_value AS assessed,
+          `SELECT p.pin, p.address, p.owner_name, p.postal_code,
+                  ${EFFECTIVE_ASSESSED_SQL} AS assessed,
+                  p.total_value AS tax_roll_value,
+                  (p.prc_total_value IS NOT NULL AND p.prc_total_value > 0) AS has_prc,
                   s.selling_price AS sale_price, s.sell_date,
-                  CAST(p.total_value AS FLOAT) / NULLIF(s.selling_price, 0) AS ratio
+                  CAST(${EFFECTIVE_ASSESSED_SQL} AS FLOAT) / NULLIF(s.selling_price, 0) AS ratio
            ${EQUITY_SAMPLE_JOIN}
            ${zipFilter}
            ORDER BY ${orderBy}
@@ -506,6 +509,7 @@ export const parceliqRouter = router({
         parcels: rows.map((r) => {
           const ratio = Number(r.ratio);
           const assessed = Number(r.assessed);
+          const taxRoll = r.tax_roll_value != null ? Number(r.tax_roll_value) : null;
           const salePrice = Number(r.sale_price);
           const owner = String(r.owner_name ?? "");
           return {
@@ -513,6 +517,8 @@ export const parceliqRouter = router({
             address:     String(r.address ?? ""),
             owner,
             assessed,
+            taxRollValue: taxRoll,
+            assessmentSource: r.has_prc ? ("prc" as const) : ("tax_roll" as const),
             salePrice,
             sellDate:    r.sell_date ? String(r.sell_date).slice(0, 10) : null,
             ratio:       +ratio.toFixed(4),

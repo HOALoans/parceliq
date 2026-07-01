@@ -27,9 +27,10 @@ function avg(arr) {
 /** @param {import("pg").Pool} pool */
 export async function computeEquity(pool) {
   console.log("\n📊 Computing equity ratios by zip code...");
+  const effectiveAssessed = `COALESCE(NULLIF(p.prc_total_value, 0), p.total_value)`;
   const { rows } = await pool.query(`
-    SELECT p.postal_code, p.total_value AS assessed, s.selling_price AS sale_price,
-      CAST(p.total_value AS FLOAT) / NULLIF(s.selling_price, 0) AS ratio
+    SELECT p.postal_code, ${effectiveAssessed} AS assessed, s.selling_price AS sale_price,
+      CAST(${effectiveAssessed} AS FLOAT) / NULLIF(s.selling_price, 0) AS ratio
     FROM parceliq_parcels p
     INNER JOIN (
       SELECT DISTINCT ON (pin) pin, selling_price, sell_date
@@ -38,8 +39,8 @@ export async function computeEquity(pool) {
         AND qualified = TRUE AND vacant_lot = FALSE
       ORDER BY pin, sell_date DESC
     ) s ON s.pin = p.pin
-    WHERE p.total_value > 10000 AND p.postal_code IS NOT NULL AND p.postal_code != ''
-      AND CAST(p.total_value AS FLOAT) / NULLIF(s.selling_price, 0) BETWEEN 0.1 AND 5.0
+    WHERE ${effectiveAssessed} > 10000 AND p.postal_code IS NOT NULL AND p.postal_code != ''
+      AND CAST(${effectiveAssessed} AS FLOAT) / NULLIF(s.selling_price, 0) BETWEEN 0.1 AND 5.0
   `);
   console.log(`  Matched ${rows.length.toLocaleString()} parcels with recent sales`);
 

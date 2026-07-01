@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
-import { EQUITY_SAMPLE_SALES_SUBQUERY } from "./equitySampleSql.js";
+import { EFFECTIVE_ASSESSED_SQL, EQUITY_SAMPLE_SALES_SUBQUERY } from "./equitySampleSql.js";
 
 export type CountyEquityQueueSort =
   | "deviation_asc"
@@ -108,14 +108,14 @@ export async function queryCountyEquityQueue(pool: Pool, input: CountyEquityQueu
       WHERE change_pct BETWEEN -10 AND 400
       GROUP BY zipcode
     ) zm ON zm.zipcode = y.zipcode
-    WHERE COALESCE(NULLIF(p.prc_total_value, 0), p.total_value) > 10000
+    WHERE ${EFFECTIVE_ASSESSED_SQL} > 10000
       AND p.postal_code IS NOT NULL AND p.postal_code != ''
       ${zipFilter}
       ${neighborhoodFilter}
       ${reappraisalFilter}
   `;
 
-  const ratioExpr = `CAST(COALESCE(NULLIF(p.prc_total_value, 0), p.total_value) AS FLOAT) / NULLIF(s.selling_price, 0)`;
+  const ratioExpr = `CAST(${EFFECTIVE_ASSESSED_SQL} AS FLOAT) / NULLIF(s.selling_price, 0)`;
 
   const dataSql = `
     WITH matched AS (
@@ -124,7 +124,7 @@ export async function queryCountyEquityQueue(pool: Pool, input: CountyEquityQueu
         p.address,
         p.owner_name,
         p.postal_code,
-        COALESCE(NULLIF(p.prc_total_value, 0), p.total_value) AS assessed,
+        ${EFFECTIVE_ASSESSED_SQL} AS assessed,
         s.selling_price AS sale_price,
         s.sell_date,
         ${ratioExpr} AS ratio,
