@@ -26,6 +26,34 @@ type CountyCard = {
   highlights?: { label: string; value: string; sub: string }[];
 };
 
+const FAIR_VALUE_PRIORITY = [
+  {
+    priority: 1,
+    method: "Own qualified sale",
+    when: "The parcel has a recent, arm's-length deed sale on record",
+  },
+  {
+    priority: 2,
+    method: "Comparable sales",
+    when: "Three or more similar sales with strong match (size, type, age) — not a blind ZIP average",
+  },
+  {
+    priority: 3,
+    method: "ZIP sale-ratio estimate",
+    when: "Comps are a weak fit, but the ZIP has enough sale history for a uniformity estimate",
+  },
+  {
+    priority: 4,
+    method: "Property characteristics",
+    when: "Thin sales data — estimated from lot, location, and class benchmarks",
+  },
+  {
+    priority: 5,
+    method: "Limited comps",
+    when: "Last resort when no stronger method is available",
+  },
+] as const;
+
 const DATA_SOURCES = [
   {
     title: "County property records",
@@ -228,6 +256,51 @@ export default function LandingPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      </section>
+
+      {/* Fair value methodology */}
+      <section className="bg-white border-y px-6 py-14">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-8">
+            <h3 className="text-2xl font-serif font-semibold text-slate-900">
+              How Parcelogik Fair Value is chosen
+            </h3>
+            <p className="text-muted-foreground mt-2 max-w-2xl mx-auto leading-relaxed">
+              We pick a single best-supported estimate — we do not blend or average methods.
+              Parcelogik Fair Value is an analytical tool, not a certified appraisal or listing price.
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-left">
+                  <th className="px-4 py-3 font-semibold text-slate-700 w-16">Priority</th>
+                  <th className="px-4 py-3 font-semibold text-slate-700">Method</th>
+                  <th className="px-4 py-3 font-semibold text-slate-700">When it wins</th>
+                </tr>
+              </thead>
+              <tbody>
+                {FAIR_VALUE_PRIORITY.map((row, i) => (
+                  <tr
+                    key={row.priority}
+                    className={i % 2 === 0 ? "bg-white" : "bg-slate-50/60"}
+                  >
+                    <td className="px-4 py-3 font-mono text-amber-800 font-semibold">
+                      {row.priority}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-slate-900">{row.method}</td>
+                    <td className="px-4 py-3 text-slate-600 leading-relaxed">{row.when}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground mt-4 text-center max-w-2xl mx-auto leading-relaxed">
+            When comparable sales are only a loose ZIP-wide match with poor similarity, we do not
+            anchor on that median — we step down to the ZIP sale-ratio estimate or characteristics
+            model instead of presenting a misleading comp number.
+          </p>
         </div>
       </section>
 

@@ -21,6 +21,7 @@ import {
   fetchCachedRodSyncAt,
   fetchCachedZipEquityRow,
 } from "./referenceCache.js";
+import { queryCountyEquityQueue } from "./countyEquityQueue.js";
 import type { SubjectProfile } from "./comparableSales.js";
 
 function toDateLabel(value: unknown): string | null {
@@ -243,6 +244,7 @@ export const parceliqRouter = router({
           level: compMatch.matchLevel,
           summary: compMatch.matchSummary,
           filters_applied: compMatch.filtersApplied,
+          avg_match_score: compMatch.avgMatchScore,
         },
       );
 
@@ -522,6 +524,30 @@ export const parceliqRouter = router({
         total:         Number(countRows[0]?.total ?? 0),
         methodology:
           "Parcels with a qualified Register of Deeds sale since 2020 (most recent sale per PIN, excluding vacant lots). Same cohort used to compute ZIP median ratios.",
+      };
+    }),
+
+  countyEquityQueue: publicProcedure
+    .input(z.object({
+      zip:              z.string().length(5).optional(),
+      neighborhood:     z.string().max(128).optional(),
+      reappraisal:      z.enum(["all", "above_zip", "below_zip", "high_growth", "low_growth"]).default("all"),
+      minDeviationPts:  z.number().min(0).max(100).optional(),
+      sort:             z.enum([
+        "deviation_asc", "deviation_desc", "ratio_asc", "ratio_desc", "assessed_desc", "sale_desc",
+      ]).default("deviation_asc"),
+      limit:            z.number().min(1).max(500).default(100),
+      offset:           z.number().min(0).default(0),
+    }))
+    .query(async ({ input }) => {
+      const result = await queryCountyEquityQueue(pool, input);
+      return {
+        ...result,
+        methodology:
+          "Sale-matched parcels with a qualified Register of Deeds deed since 2020 (most recent sale per PIN, excluding vacant lots). " +
+          "Deviation compares each parcel's assessment-to-sale ratio to its ZIP median — a uniformity / field-review queue, not a mass reappraisal order.",
+        disclaimer:
+          "Parcelogik Fair Value and ratio rankings are analytical tools for equity review. They do not constitute certified appraisals or directives to change tax roll values.",
       };
     }),
 

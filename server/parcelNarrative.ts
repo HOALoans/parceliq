@@ -203,6 +203,13 @@ export function buildParcelNarrative(opts: {
       compMatch?.summary ?? "",
       `The middle sale price among those homes is ${money(med)}, so we estimate about ${money(market)} for this property.`,
     );
+  } else if (method === "zip_uniformity" && market != null) {
+    const zipRatio = v.zip_equity?.median_ratio;
+    marketParagraphs.push(
+      `Nearby sales were not a close enough match to rely on a comp median, so we applied this ZIP's typical assessment-to-sale ratio` +
+        (zipRatio != null ? ` (${(zipRatio * 100).toFixed(1)}%)` : "") +
+        ` to the county assessment — about ${money(market)}. This is a uniformity estimate, not a property-specific appraisal.`,
+    );
   } else if (method === "gradient_model" && market != null) {
     marketParagraphs.push(
       `Not many recent sales nearby, so we used home size, location, and type to estimate about ${money(market)}. Treat this as a rough guide — not an official appraisal.`,

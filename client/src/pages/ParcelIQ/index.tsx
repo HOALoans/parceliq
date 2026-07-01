@@ -2,7 +2,7 @@
  * Parcelogik.com — Assessment Dashboard
  */
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "../../lib/trpc";           // adjust path to match your trpc client
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -266,7 +266,8 @@ function equityExtrapolationExplainer(v: Record<string, any> | undefined): strin
 const MARKET_METHOD_PRIORITY = [
   { priority: 1, method: "own_sale", title: "This home's own sale", hint: "Strongest — a verified sale on record" },
   { priority: 2, method: "comparable_sales", title: "Nearby comparable sales", hint: "Median of sales matched by sq ft, type, and age" },
-  { priority: 3, method: "gradient_model", title: "Property characteristics", hint: "Fallback from lot, location, and class" },
+  { priority: 3, method: "zip_uniformity", title: "ZIP sale-ratio estimate", hint: "When comps are a weak fit — equity uniformity method" },
+  { priority: 4, method: "gradient_model", title: "Property characteristics", hint: "Fallback from lot, location, and class" },
 ] as const;
 
 function ConfidenceBadge({ level }: { level: string }) {
@@ -360,6 +361,7 @@ function MarketEstimatePriorityPanel({
 function saleEstimateMethodHint(method: string | undefined): string {
   if (method === "own_sale") return "From this home's qualified sale";
   if (method === "comparable_sales") return "From nearby comparable sales";
+  if (method === "zip_uniformity") return "From ZIP sale-ratio uniformity (weak comp match)";
   if (method === "gradient_model") return "From property characteristics";
   return "From county records and deed sales";
 }
@@ -875,13 +877,22 @@ function ScorePill({ score }: { score: number | null }) {
 export default function ParcelogikPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [zipSample, setZipSample] = useState<string | null>(null);
+  const [explorerPin, setExplorerPin] = useState<string | null>(null);
 
   const openZipSample = (zip: string) => {
+    setExplorerPin(null);
     setZipSample(zip);
     setTab("explorer");
   };
 
+  const openParcel = (pin: string) => {
+    setZipSample(null);
+    setExplorerPin(pin);
+    setTab("explorer");
+  };
+
   const clearZipSample = () => setZipSample(null);
+  const clearExplorerPin = () => setExplorerPin(null);
 
   return (
     <div className="flex flex-col min-h-screen bg-neutral-50">
@@ -937,10 +948,14 @@ export default function ParcelogikPage() {
           <ExplorerTab
             zipSample={zipSample}
             onClearZipSample={clearZipSample}
+            explorerPin={explorerPin}
+            onClearExplorerPin={clearExplorerPin}
           />
         )}
         {tab === "revenue"    && <RevenueTab />}
-        {tab === "equity"     && <EquityTab onOpenZip={openZipSample} />}
+        {tab === "equity"     && (
+          <EquityTab onOpenZip={openZipSample} onOpenParcel={openParcel} />
+        )}
         {tab === "overrides"  && <OverridesTab />}
         {tab === "audit"      && <AuditTab />}
       </div>
@@ -1526,24 +1541,49 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
 function ExplorerTab({
   zipSample,
   onClearZipSample,
+  explorerPin,
+  onClearExplorerPin,
 }: {
   zipSample: string | null;
   onClearZipSample: () => void;
+  explorerPin: string | null;
+  onClearExplorerPin: () => void;
 }) {
   if (zipSample) {
     return <ZipEquitySampleView zip={zipSample} onBack={onClearZipSample} />;
   }
 
-  return <ExplorerSearchView />;
+  return (
+    <ExplorerSearchView
+      initialPin={explorerPin}
+      onConsumedInitialPin={onClearExplorerPin}
+    />
+  );
 }
 
-function ExplorerSearchView() {
+function ExplorerSearchView({
+  initialPin,
+  onConsumedInitialPin,
+}: {
+  initialPin?: string | null;
+  onConsumedInitialPin?: () => void;
+}) {
   const [q, setQ]         = useState("");
   const [classCd, setCls] = useState<string>("");
   const [search, setSearch] = useState("");
   const [detailPin, setDetailPin] = useState<string | null>(null);
   const [detailAddress, setDetailAddress] = useState<string | null>(null);
   const detailRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!initialPin) return;
+    setDetailPin(initialPin);
+    setDetailAddress(null);
+    onConsumedInitialPin?.();
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [initialPin, onConsumedInitialPin]);
 
   const { data, isLoading, isFetching } = trpc.parceliq.searchParcels.useQuery(
     { q: search || undefined, classCd: classCd || undefined, limit: 25 },
@@ -2277,7 +2317,13 @@ function RevenueTab() {
 // ════════════════════════════════════════════════════════════════════════
 //  EQUITY ANALYSIS
 // ════════════════════════════════════════════════════════════════════════
-function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
+function EquityTab({
+  onOpenZip,
+  onOpenParcel,
+}: {
+  onOpenZip: (zip: string) => void;
+  onOpenParcel: (pin: string) => void;
+}) {
   const { data, isLoading } = trpc.parceliq.equitySummary.useQuery();
   type SortKey = "medianVariancePct" | "zip" | "parcelCount" | "medianRatio" | "flagRatePct";
   const [sortKey, setSortKey] = useState<SortKey>("medianVariancePct");
@@ -2422,7 +2468,249 @@ function EquityTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
           </CardContent>
         </Card>
       )}
+
+      <CountyEquityQueuePanel onOpenParcel={onOpenParcel} />
     </div>
+  );
+}
+
+type QueueSort =
+  | "deviation_asc"
+  | "deviation_desc"
+  | "ratio_asc"
+  | "ratio_desc"
+  | "assessed_desc"
+  | "sale_desc";
+
+type ReappraisalFilter = "all" | "above_zip" | "below_zip" | "high_growth" | "low_growth";
+
+function CountyEquityQueuePanel({ onOpenParcel }: { onOpenParcel: (pin: string) => void }) {
+  const [zip, setZip] = useState<string>("");
+  const [neighborhood, setNeighborhood] = useState("");
+  const [reappraisal, setReappraisal] = useState<ReappraisalFilter>("all");
+  const [minDeviation, setMinDeviation] = useState<string>("10");
+  const [sort, setSort] = useState<QueueSort>("deviation_asc");
+  const [page, setPage] = useState(0);
+  const limit = 100;
+
+  const { data, isLoading, isFetching } = trpc.parceliq.countyEquityQueue.useQuery({
+    zip: zip || undefined,
+    neighborhood: neighborhood.trim() || undefined,
+    reappraisal,
+    minDeviationPts: minDeviation ? Number(minDeviation) : undefined,
+    sort,
+    limit,
+    offset: page * limit,
+  });
+
+  const exportCsv = () => {
+    const rows = data?.parcels ?? [];
+    if (!rows.length) return;
+    const header = [
+      "PIN", "Address", "ZIP", "Neighborhood", "Assessed", "SalePrice", "SaleDate",
+      "RatioPct", "ZipMedianRatioPct", "DeviationFromZipPts", "ReappraisalChangePct", "ReviewHint",
+    ];
+    const lines = rows.map((p) => [
+      p.pin,
+      `"${String(p.address).replace(/"/g, '""')}"`,
+      p.zip,
+      `"${String(p.neighborhood ?? "").replace(/"/g, '""')}"`,
+      p.assessed,
+      p.salePrice,
+      p.sellDate ?? "",
+      p.ratioPct,
+      p.zipMedianRatioPct ?? "",
+      p.deviationFromZip ?? "",
+      p.reappraisalChangePct ?? "",
+      `"${p.reviewHint.replace(/"/g, '""')}"`,
+    ]);
+    const csv = [header.join(","), ...lines.map((l) => l.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `parcelogik-county-equity-queue-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  return (
+    <Card className="border-slate-200">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold">County equity review queue</CardTitle>
+        <p className="text-sm text-muted-foreground leading-relaxed mt-1">
+          Every sale-matched parcel in Buncombe, ranked by how far its assessment-to-sale ratio sits from
+          the ZIP median — a field-review and uniformity tool for assessor staff. Not a mass reappraisal list.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="w-28">
+            <label className="text-xs text-muted-foreground block mb-1">ZIP</label>
+            <Input
+              placeholder="28803"
+              value={zip}
+              maxLength={5}
+              onChange={(e) => { setZip(e.target.value.replace(/\D/g, "")); setPage(0); }}
+            />
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            <label className="text-xs text-muted-foreground block mb-1">Neighborhood / subdivision</label>
+            <Input
+              placeholder="Filter by name…"
+              value={neighborhood}
+              onChange={(e) => { setNeighborhood(e.target.value); setPage(0); }}
+            />
+          </div>
+          <div className="w-44">
+            <label className="text-xs text-muted-foreground block mb-1">Reappraisal cohort</label>
+            <Select value={reappraisal} onValueChange={(v) => { setReappraisal(v as ReappraisalFilter); setPage(0); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All parcels</SelectItem>
+                <SelectItem value="above_zip">Grew faster than ZIP median</SelectItem>
+                <SelectItem value="below_zip">Grew slower than ZIP median</SelectItem>
+                <SelectItem value="high_growth">High growth (80%+)</SelectItem>
+                <SelectItem value="low_growth">Low growth (&lt;50%)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-28">
+            <label className="text-xs text-muted-foreground block mb-1">Min deviation (pts)</label>
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={minDeviation}
+              onChange={(e) => { setMinDeviation(e.target.value); setPage(0); }}
+            />
+          </div>
+          <div className="w-48">
+            <label className="text-xs text-muted-foreground block mb-1">Sort</label>
+            <Select value={sort} onValueChange={(v) => { setSort(v as QueueSort); setPage(0); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="deviation_asc">Most below ZIP norm</SelectItem>
+                <SelectItem value="deviation_desc">Most above ZIP norm</SelectItem>
+                <SelectItem value="ratio_asc">Lowest ratio</SelectItem>
+                <SelectItem value="ratio_desc">Highest ratio</SelectItem>
+                <SelectItem value="assessed_desc">Highest assessed</SelectItem>
+                <SelectItem value="sale_desc">Highest sale</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!data?.parcels.length}>
+            Export CSV
+          </Button>
+        </div>
+
+        {data?.disclaimer && (
+          <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 leading-relaxed">
+            {data.disclaimer}
+          </p>
+        )}
+
+        <div className="text-sm text-muted-foreground">
+          {isLoading ? "Loading queue…" : `${total.toLocaleString()} sale-matched parcels`}
+          {isFetching && !isLoading && " · refreshing…"}
+        </div>
+
+        <div className="border rounded-lg overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Address</TableHead>
+                <TableHead>ZIP</TableHead>
+                <TableHead>Neighborhood</TableHead>
+                <TableHead className="text-right">Assessed</TableHead>
+                <TableHead className="text-right">Sale</TableHead>
+                <TableHead className="text-right">Ratio</TableHead>
+                <TableHead className="text-right">ZIP median</TableHead>
+                <TableHead className="text-right">vs ZIP</TableHead>
+                <TableHead className="text-right">Reappraisal</TableHead>
+                <TableHead>Review hint</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading && (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    Building county equity queue…
+                  </TableCell>
+                </TableRow>
+              )}
+              {!isLoading && !data?.parcels.length && (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    No parcels match these filters.
+                  </TableCell>
+                </TableRow>
+              )}
+              {data?.parcels.map((p) => (
+                <TableRow key={p.pin}>
+                  <TableCell className="max-w-[200px]">
+                    <button
+                      type="button"
+                      className="text-left text-sm hover:underline text-amber-900 font-medium"
+                      onClick={() => onOpenParcel(p.pin)}
+                    >
+                      {p.address || p.pin}
+                    </button>
+                    <div className="text-[10px] text-muted-foreground font-mono">{p.pin}</div>
+                  </TableCell>
+                  <TableCell className="text-sm">{p.zip}</TableCell>
+                  <TableCell className="text-xs max-w-[120px] truncate">{p.neighborhood ?? "—"}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{fmt(p.assessed)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{fmt(p.salePrice)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{p.ratioPct}%</TableCell>
+                  <TableCell className="text-right font-mono text-sm">
+                    {p.zipMedianRatioPct != null ? `${p.zipMedianRatioPct}%` : "—"}
+                  </TableCell>
+                  <TableCell className={`text-right font-mono text-sm font-semibold ${
+                    p.deviationFromZip != null && p.deviationFromZip < -10 ? "text-amber-800"
+                      : p.deviationFromZip != null && p.deviationFromZip > 10 ? "text-red-800"
+                        : "text-slate-700"
+                  }`}>
+                    {p.deviationFromZip != null
+                      ? `${p.deviationFromZip > 0 ? "+" : ""}${p.deviationFromZip} pts`
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-sm">
+                    {p.reappraisalChangePct != null ? `${p.reappraisalChangePct.toFixed(1)}%` : "—"}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground max-w-[160px]">{p.reviewHint}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Page {page + 1} of {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page + 1 >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

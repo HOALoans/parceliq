@@ -1,5 +1,6 @@
 import { modelValue, modelBreakdown, type ParcelAttrs } from "./valuation.js";
 import type { PrcRecord } from "./spatialestPrc.js";
+import { assessCompQuality } from "./compQuality.js";
 
 export type ComparableSale = {
   sell_date: string | null;
@@ -22,6 +23,7 @@ export type CompMatching = {
   level: "strict" | "relaxed" | "zip_wide";
   summary: string;
   filters_applied: string[];
+  avg_match_score?: number;
 };
 
 export type ZipEquityRow = {
@@ -72,7 +74,7 @@ export type ValuationDetail = {
   fair_market_value: number | null;
   market_estimate: {
     value: number | null;
-    method: "own_sale" | "comparable_sales" | "gradient_model" | "insufficient";
+    method: "own_sale" | "comparable_sales" | "zip_uniformity" | "gradient_model" | "insufficient";
     method_label: string;
     confidence: "high" | "medium" | "low";
     range_low: number | null;
@@ -97,7 +99,7 @@ export type ValuationDetail = {
   verdict_label: string;
   verdict_summary: string;
   /** @deprecated Use market_estimate.method — kept for compatibility */
-  primary_method: "own_sale" | "comparable_sales" | "gradient_model" | "insufficient" | "deed_ratio" | "zillow_adjusted" | "prc_current";
+  primary_method: "own_sale" | "comparable_sales" | "zip_uniformity" | "gradient_model" | "insufficient" | "deed_ratio" | "zillow_adjusted" | "prc_current";
   steps: ValuationStep[];
   zip_equity: ZipEquityRow | null;
   zillow: MarketIndexRow | null;
@@ -184,6 +186,17 @@ export function buildValuationDetail(
   const compMedian = compPrices.length ? median(compPrices) : null;
   const compEstimate = compMedian != null ? roundDollars(compMedian) : null;
 
+  const compQuality = assessCompQuality(
+    compMatching?.level ?? "zip_wide",
+    compPrices,
+    compMatching?.avg_match_score ?? 0,
+  );
+
+  const zipUniformityEstimate =
+    medianRatio && assessed > 0 && zipEquity && zipEquity.sample_count >= 15
+      ? roundDollars(assessed / medianRatio)
+      : null;
+
   const estimateLines: EstimateLine[] = [];
 
   if (ownSaleEstimate != null) {
@@ -202,12 +215,35 @@ export function buildValuationDetail(
     const compDetail = compMatching?.summary
       ? `${compMatching.summary} Median of ${compPrices.length} qualified sale${compPrices.length !== 1 ? "s" : ""} (Register of Deeds, since 2020).`
       : `Median of ${compPrices.length} qualified sale${compPrices.length !== 1 ? "s" : ""} in the same ZIP with prices in a similar range to this assessment (Register of Deeds, since 2020).`;
+    const weakNote = compQuality.weak && compQuality.weakReason
+      ? ` ${compQuality.weakReason}`
+      : "";
     estimateLines.push({
       method: "comparable_sales",
       label: `Nearby sales in ZIP ${zipEquity?.zip_code ?? attrs.ZIP ?? "—"}`,
       value: compEstimate,
-      confidence: compPrices.length >= 5 ? "medium" : compPrices.length >= 3 ? "medium" : "low",
-      detail: compDetail,
+      confidence: compQuality.weak
+        ? "low"
+        : compPrices.length >= 5
+          ? "medium"
+          : compPrices.length >= 3
+            ? "medium"
+            : "low",
+      detail: compDetail + weakNote,
+      priority: 2,
+      selected: false,
+    });
+  }
+
+  if (zipUniformityEstimate != null) {
+    estimateLines.push({
+      method: "zip_uniformity",
+      label: `ZIP ${zipEquity!.zip_code} sale-ratio estimate`,
+      value: zipUniformityEstimate,
+      confidence: zipEquity!.sample_count >= 50 ? "medium" : "low",
+      detail:
+        `Applies this ZIP's median assessment-to-sale ratio (${(medianRatio! * 100).toFixed(1)}% across ${zipEquity!.sample_count} matched sales) to this parcel's county assessment. ` +
+        `Used when comparable sales are a weak match — an equity-uniformity estimate, not a property-specific appraisal.`,
       priority: 2,
       selected: false,
     });
@@ -232,7 +268,10 @@ export function buildValuationDetail(
 
   const ownLine = estimateLines.find((e) => e.method === "own_sale");
   const compLine = estimateLines.find((e) => e.method === "comparable_sales");
+  const zipLine = estimateLines.find((e) => e.method === "zip_uniformity");
   const gradLine = estimateLines.find((e) => e.method === "gradient_model");
+
+  const compsUsable = compLine?.value && !compQuality.weak && compPrices.length >= 3;
 
   if (ownLine?.value) {
     marketValue = ownLine.value;
@@ -242,11 +281,21 @@ export function buildValuationDetail(
       ownLine.confidence === "high"
         ? "Recent qualified sale"
         : "Qualified sale (time-adjusted)";
-  } else if (compLine?.value && compPrices.length >= 3) {
-    marketValue = compLine.value;
+  } else if (compsUsable) {
+    marketValue = compLine!.value;
     marketMethod = "comparable_sales";
     marketConfidence = compPrices.length >= 5 ? "medium" : "low";
     marketMethodLabel = "Nearby comparable sales";
+  } else if (zipLine?.value) {
+    marketValue = zipLine.value;
+    marketMethod = "zip_uniformity";
+    marketConfidence = zipLine.confidence;
+    marketMethodLabel = "ZIP sale-ratio estimate";
+  } else if (gradLine?.value && compQuality.weak) {
+    marketValue = gradLine.value;
+    marketMethod = "gradient_model";
+    marketConfidence = "low";
+    marketMethodLabel = "Characteristics model";
   } else if (compLine?.value) {
     marketValue = compLine.value;
     marketMethod = "comparable_sales";
@@ -442,7 +491,7 @@ export function buildValuationDetail(
       range_high: rangeHigh,
       estimates: estimateLines,
       selection_rule:
-        "We do not blend or weight these values. The market estimate uses the first method with enough evidence: (1) this parcel's qualified sale, (2) median of nearby comps matched by size, property type, and age when data allows (3+ sales preferred), (3) characteristics model as fallback. Other figures shown are context only.",
+        "We do not blend or weight these values. Priority: (1) this parcel's qualified sale, (2) comparable sales when match quality is strong, (3) ZIP sale-ratio estimate when comps are a weak fit, (4) limited comps or characteristics model as fallback. Parcelogik Fair Value is an analytical estimate — not a certified appraisal or listed market price.",
     },
     equity_extrapolation: {
       value: deedExtrapolation,

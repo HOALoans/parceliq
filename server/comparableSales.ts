@@ -21,6 +21,7 @@ export type ComparableMatchResult = {
   matchLevel: CompMatchLevel;
   matchSummary: string;
   filtersApplied: string[];
+  avgMatchScore: number;
 };
 
 type RawCompRow = {
@@ -250,11 +251,17 @@ function selectComps(subject: SubjectProfile, candidates: RawCompRow[]): Compara
             ? `Relaxed match: ${picked.length} sales with similar size, age, and property type in the ZIP.${dataNote}`
             : `ZIP-wide sample: ${picked.length} recent sales (limited size/type matches available).`;
 
+      const avgMatchScore =
+        picked.length > 0
+          ? picked.reduce((sum, c) => sum + c.match_score, 0) / picked.length
+          : 0;
+
       return {
         comps: picked.map(({ match_score: _m, property_type: _p, ...rest }) => rest),
         matchLevel: level,
         matchSummary: summary,
         filtersApplied: filtersByLevel[level],
+        avgMatchScore,
       };
     }
   }
@@ -264,6 +271,7 @@ function selectComps(subject: SubjectProfile, candidates: RawCompRow[]): Compara
     matchLevel: "zip_wide",
     matchSummary: "No comparable sales found in this ZIP.",
     filtersApplied: filtersByLevel.zip_wide,
+    avgMatchScore: 0,
   };
 }
 
