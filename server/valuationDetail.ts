@@ -234,21 +234,19 @@ export function buildValuationDetail(
   const compLine = estimateLines.find((e) => e.method === "comparable_sales");
   const gradLine = estimateLines.find((e) => e.method === "gradient_model");
 
-  if (ownLine?.value && ownLine.confidence === "high") {
+  if (ownLine?.value) {
     marketValue = ownLine.value;
     marketMethod = "own_sale";
-    marketConfidence = "high";
-    marketMethodLabel = "Recent qualified sale";
+    marketConfidence = ownLine.confidence;
+    marketMethodLabel =
+      ownLine.confidence === "high"
+        ? "Recent qualified sale"
+        : "Qualified sale (time-adjusted)";
   } else if (compLine?.value && compPrices.length >= 3) {
     marketValue = compLine.value;
     marketMethod = "comparable_sales";
     marketConfidence = compPrices.length >= 5 ? "medium" : "low";
     marketMethodLabel = "Nearby comparable sales";
-  } else if (ownLine?.value) {
-    marketValue = ownLine.value;
-    marketMethod = "own_sale";
-    marketConfidence = "medium";
-    marketMethodLabel = "Qualified sale (time-adjusted)";
   } else if (compLine?.value) {
     marketValue = compLine.value;
     marketMethod = "comparable_sales";

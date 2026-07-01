@@ -32,10 +32,11 @@ function parseSalesRow(headers, vals) {
   const pin = row.PINN?.trim();
   const price = parseInt(row.SellingPrice || "0", 10) || 0;
   const sellDate = parseDate(row.SellDate);
-  const qualified = row.QualifiedSale?.trim();
+  const qualified = row.QualifiedSale?.trim().toUpperCase();
 
   if (!pin || price < 10000 || !sellDate || sellDate < "2015-01-01") return null;
-  if (qualified === "False" || qualified === "0" || qualified === "") return null;
+  // Buncombe CSV uses Y / N / P — only arm's-length qualified sales belong in comps & fair value.
+  if (qualified !== "Y") return null;
 
   return [
     pin,
