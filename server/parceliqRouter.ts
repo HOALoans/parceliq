@@ -27,35 +27,51 @@ function toDateLabel(value: unknown): string | null {
 }
 
 function fairValueFromRow(row: Record<string, unknown>, attrs: ParcelAttrs): number | null {
-  const assessed = Number(row.total_value ?? 0);
   if (row.zillow_adjusted_value != null) return Number(row.zillow_adjusted_value);
   if (row.model_value != null) return Number(row.model_value);
   return modelValue(attrs);
 }
 
+function effectiveAssessed(row: Record<string, unknown>): number {
+  const prc = row.prc_total_value != null ? Number(row.prc_total_value) : 0;
+  const roll = Number(row.total_value ?? 0);
+  return prc > 0 ? prc : roll;
+}
+
 function enrichRow(row: Record<string, unknown>) {
+  const taxRoll = row.total_value != null ? Number(row.total_value) : null;
+  const assessed = effectiveAssessed(row);
+  const hasLivePrc = row.prc_total_value != null && Number(row.prc_total_value) > 0;
   const attrs: ParcelAttrs = {
     CALCACREAGE:  row.acres   != null ? Number(row.acres)        : null,
     LANDVALUE:    null,
-    TOTALVALUE:   row.total_value != null ? Number(row.total_value) : null,
+    TOTALVALUE:   assessed > 0 ? assessed : null,
     CLASSCD:      "R",
     ZIP:          row.postal_code as string ?? null,
     SITEADDRESS:  row.address as string ?? null,
   };
-  const fairValue = fairValueFromRow(row, attrs);
-  const cv = Number(row.total_value ?? 0);
+  const prcRollMismatch =
+    hasLivePrc && taxRoll != null && taxRoll > 0 && Math.abs(assessed - taxRoll) > taxRoll * 0.05;
+  const fairValue = prcRollMismatch
+    ? row.zillow_adjusted_value != null
+      ? Number(row.zillow_adjusted_value)
+      : null
+    : fairValueFromRow(row, attrs);
+  const cv = assessed;
   const vp =
-    row.variance_pct != null
-      ? Number(row.variance_pct)
-      : fairValue && cv
-        ? +(((cv - fairValue) / fairValue) * 100).toFixed(1)
+    fairValue && cv
+      ? +(((cv - fairValue) / fairValue) * 100).toFixed(1)
+      : row.variance_pct != null && !prcRollMismatch
+        ? Number(row.variance_pct)
         : null;
   return {
     PIN:          String(row.pin ?? ""),
     SITEADDRESS:  String(row.address ?? ""),
     OWNER:        String(row.owner_name ?? ""),
     CALCACREAGE:  row.acres != null ? Number(row.acres) : null,
-    TOTALVALUE:   row.total_value != null ? Number(row.total_value) : null,
+    TOTALVALUE:   assessed > 0 ? assessed : null,
+    tax_roll_value: taxRoll,
+    assessment_source: hasLivePrc ? "prc" as const : "tax_roll" as const,
     LANDVALUE:    null as number | null,
     CLASSCD:      "R",
     POSTAL_CODE:  String(row.postal_code ?? ""),
@@ -63,6 +79,7 @@ function enrichRow(row: Record<string, unknown>) {
     SUBDIVISION:  String(row.subdivision ?? ""),
     LEVY_DUE:     row.levy_due != null ? Number(row.levy_due) : null,
     model_value:  fairValue,
+    estimate_stale: prcRollMismatch,
     zillow_adjusted_value: row.zillow_adjusted_value != null ? Number(row.zillow_adjusted_value) : null,
     variance_pct: vp,
     equity_score: vp != null ? equityScore(vp) : null,

@@ -101,6 +101,48 @@ function zipEquityRatioStatus(ratio: number): { label: string; badgeClass: strin
   return { label: "Well below sales", badgeClass: "bg-amber-200 text-amber-900 border-amber-300" };
 }
 
+function AssessedValueCell({
+  parcel,
+}: {
+  parcel: {
+    TOTALVALUE?: number | null;
+    tax_roll_value?: number | null;
+    assessment_source?: string;
+  };
+}) {
+  const assessed = parcel.TOTALVALUE;
+  const priorRoll = parcel.tax_roll_value;
+  const showPrior = priorRoll != null && assessed != null && priorRoll !== assessed;
+  return (
+    <div>
+      <span className="font-mono text-sm">{fmt(assessed)}</span>
+      {parcel.assessment_source === "prc" && (
+        <span className="ml-1 text-[9px] font-medium text-blue-700 align-middle">PRC</span>
+      )}
+      {showPrior && (
+        <span className="block text-[9px] text-muted-foreground line-through">{fmt(priorRoll)}</span>
+      )}
+    </div>
+  );
+}
+
+function ModelValueCell({
+  value,
+  stale,
+}: {
+  value: number | null | undefined;
+  stale?: boolean;
+}) {
+  return (
+    <div>
+      <span className="font-mono text-sm">{fmt(value)}</span>
+      {stale && (
+        <span className="block text-[9px] text-muted-foreground">Open View for comp-based estimate</span>
+      )}
+    </div>
+  );
+}
+
 function equityRiskLabel(riskLevel: string): string {
   if (riskLevel === "high") return "Low ratio";
   if (riskLevel === "moderate") return "Moderate gap";
@@ -876,8 +918,8 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                   <TableCell className="font-mono text-xs">{p.PIN}</TableCell>
                   <TableCell className="text-sm font-medium">{p.SITEADDRESS}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.OWNER?.slice(0, 28)}</TableCell>
-                  <TableCell className="font-mono text-sm">{fmt(p.TOTALVALUE)}</TableCell>
-                  <TableCell className="font-mono text-sm">{fmt(p.model_value)}</TableCell>
+                  <TableCell><AssessedValueCell parcel={p} /></TableCell>
+                  <TableCell><ModelValueCell value={p.model_value} stale={p.estimate_stale} /></TableCell>
                   <TableCell><VarianceBadge pct={p.variance_pct} /></TableCell>
                 </TableRow>
               ))}
@@ -1231,8 +1273,8 @@ function ExplorerSearchView() {
                   <TableCell className="font-medium text-sm max-w-[180px] truncate">{p.SITEADDRESS}</TableCell>
                   <TableCell className="text-xs text-muted-foreground max-w-[140px] truncate">{p.OWNER}</TableCell>
                   <TableCell className="font-mono text-xs">{p.CALCACREAGE?.toFixed(2) ?? "—"}</TableCell>
-                  <TableCell className="font-mono text-sm">{fmt(p.TOTALVALUE)}</TableCell>
-                  <TableCell className="font-mono text-sm">{fmt(p.model_value)}</TableCell>
+                  <TableCell><AssessedValueCell parcel={p} /></TableCell>
+                  <TableCell><ModelValueCell value={p.model_value} stale={p.estimate_stale} /></TableCell>
                   <TableCell><VarianceBadge pct={p.variance_pct} /></TableCell>
                   <TableCell><ScorePill score={p.equity_score} /></TableCell>
                   <TableCell>
