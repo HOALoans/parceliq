@@ -27,7 +27,7 @@ function toDateLabel(value: unknown): string | null {
 }
 
 function fairValueFromRow(row: Record<string, unknown>, attrs: ParcelAttrs): number | null {
-  if (row.zillow_adjusted_value != null) return Number(row.zillow_adjusted_value);
+  // Bulk deed/gradient preview only — not zillow_adjusted_value (ZIP trend extrapolation).
   if (row.model_value != null) return Number(row.model_value);
   return modelValue(attrs);
 }
@@ -52,11 +52,8 @@ function enrichRow(row: Record<string, unknown>) {
   };
   const prcRollMismatch =
     hasLivePrc && taxRoll != null && taxRoll > 0 && Math.abs(assessed - taxRoll) > taxRoll * 0.05;
-  const fairValue = prcRollMismatch
-    ? row.zillow_adjusted_value != null
-      ? Number(row.zillow_adjusted_value)
-      : null
-    : fairValueFromRow(row, attrs);
+  // Comp-based market estimate is computed in getParcel only; list view stays blank when PRC just updated.
+  const fairValue = prcRollMismatch ? null : fairValueFromRow(row, attrs);
   const cv = assessed;
   const vp =
     fairValue && cv

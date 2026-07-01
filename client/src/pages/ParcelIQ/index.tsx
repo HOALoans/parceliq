@@ -355,6 +355,13 @@ function MarketEstimatePriorityPanel({
   );
 }
 
+function saleEstimateTitle(method: string | undefined): string {
+  if (method === "own_sale") return "Estimate from this home's sale";
+  if (method === "comparable_sales") return "Comparable sales estimate";
+  if (method === "gradient_model") return "Characteristics-based estimate";
+  return "Sale price estimate";
+}
+
 /** Sale estimate + comps — separate from the value-review story; explained in plain language. */
 function SalePriceEstimateSection({
   v,
@@ -365,6 +372,7 @@ function SalePriceEstimateSection({
   verdict,
   verdictStyles,
   equityExtrap,
+  zillowAdjusted,
 }: {
   v: Record<string, any> | undefined;
   assessed: number | null | undefined;
@@ -374,6 +382,7 @@ function SalePriceEstimateSection({
   verdict: string | undefined;
   verdictStyles: string;
   equityExtrap: number | undefined;
+  zillowAdjusted?: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasSaleContent =
@@ -402,13 +411,13 @@ function SalePriceEstimateSection({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="space-y-2 max-w-2xl">
             <CardTitle className="text-sm font-semibold text-slate-800">
-              Sale price estimate — a different question
+              {saleEstimateTitle(marketEst?.method)} — a different question
             </CardTitle>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              The <strong>value review above</strong> is what the assessor uses for your tax bill.
-              This number asks something else: <em>based on real home sales nearby, what might a
-              buyer pay today?</em> It does not change your assessment — it helps you understand
-              how county value compares to the market.
+              The <strong>value review above</strong> is the assessor&apos;s official tax value.
+              This figure is Parcelogik&apos;s <strong>market estimate</strong> — what nearby deed
+              sales suggest a buyer might pay today. It is not the county value, not a Zillow
+              Zestimate, and not an official appraisal.
             </p>
           </div>
           <Button
@@ -476,6 +485,19 @@ function SalePriceEstimateSection({
 
         {expanded && (
           <div className="space-y-4 border-t pt-4">
+            {zillowAdjusted != null &&
+              fairValue != null &&
+              Math.abs(zillowAdjusted - fairValue) > fairValue * 0.03 && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                <p className="font-medium text-slate-900">ZIP trend reference (not used above)</p>
+                <p className="mt-1 leading-relaxed">
+                  A separate bulk calculation applied the ZIP&apos;s typical assessment-to-sale
+                  ratio plus regional price growth to this property:{" "}
+                  <strong>{fmt(zillowAdjusted)}</strong>. That is a uniformity/trend metric — not
+                  the comparable-sales estimate shown here.
+                </p>
+              </div>
+            )}
             <p className="text-sm text-slate-600 leading-relaxed">{marketEstimateExplainer(v)}</p>
             <MarketEstimatePriorityPanel marketEst={marketEst} fairValue={fairValue} />
 
@@ -1185,7 +1207,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                 <TableHead>Address</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>County Value</TableHead>
-                <TableHead>Sale Estimate</TableHead>
+                <TableHead title="Bulk preview — open View for comparable-sales estimate">Market est.</TableHead>
                 <TableHead>The Gap</TableHead>
               </TableRow>
             </TableHeader>
@@ -1528,7 +1550,7 @@ function ExplorerSearchView() {
                 <TableHead>PIN</TableHead><TableHead>Address</TableHead>
                 <TableHead>Owner</TableHead><TableHead>Acres</TableHead>
                 <TableHead>County Value</TableHead>
-                <TableHead>Sale Estimate</TableHead>
+                <TableHead title="Bulk preview — open View for comparable-sales estimate">Market est.</TableHead>
                 <TableHead>The Gap</TableHead>
                 <TableHead title="How closely county value matches sale evidence (100 = match)">Match</TableHead>
                 <TableHead />
@@ -1823,6 +1845,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         verdict={verdict}
         verdictStyles={verdictStyles}
         equityExtrap={equityExtrap}
+        zillowAdjusted={data.zillow_adjusted_value as number | null | undefined}
       />
 
       {warnings.length > 0 && (
