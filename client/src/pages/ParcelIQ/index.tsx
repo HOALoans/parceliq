@@ -1361,10 +1361,10 @@ function ReappraisalYoYPanel({ yoy }: { yoy: Record<string, any> }) {
     vsZip == null
       ? null
       : vsZip > 2
-        ? `${vsZip.toFixed(1)} pts above ZIP median`
+        ? `${vsZip.toFixed(1)} pts above typical ZIP reappraisal`
         : vsZip < -2
-          ? `${Math.abs(vsZip).toFixed(1)} pts below ZIP median`
-          : "Near ZIP median";
+          ? `${Math.abs(vsZip).toFixed(1)} pts below typical ZIP reappraisal`
+          : "Near typical ZIP reappraisal";
 
   return (
     <Card className="border-2 border-indigo-200 bg-indigo-50/30">
@@ -1403,13 +1403,13 @@ function ReappraisalYoYPanel({ yoy }: { yoy: Record<string, any> }) {
             <span className="bg-white border rounded px-2 py-1">
               ZIP {yoy.zipcode} ({yoy.zip_name})
               {yoy.zip_median_change_pct != null && (
-                <> · median <strong>+{Number(yoy.zip_median_change_pct).toFixed(1)}%</strong></>
+                <> · typical reappraisal <strong>+{Number(yoy.zip_median_change_pct).toFixed(1)}%</strong> in this ZIP</>
               )}
             </span>
           )}
           {yoy.county_median_change_pct != null && (
             <span className="bg-white border rounded px-2 py-1">
-              County median <strong>+{Number(yoy.county_median_change_pct).toFixed(1)}%</strong>
+              County typical reappraisal <strong>+{Number(yoy.county_median_change_pct).toFixed(1)}%</strong>
             </span>
           )}
           {vsZipLabel && (
@@ -1468,7 +1468,10 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
             {prc ? "Spatialest PRC (live)" : "Tax roll snapshot"}
           </div>
           {prc && taxRoll != null && taxRoll !== assessed && (
-            <div className="text-[10px] text-amber-700 mt-0.5">Roll: {fmt(taxRoll)}</div>
+            <div className="text-[10px] text-amber-800 mt-1 leading-snug">
+              Prior tax roll: {fmt(taxRoll)}
+              <span className="block text-amber-700/90">Older bulk county file before live PRC caught up to 2026 reappraisal</span>
+            </div>
           )}
         </div>
         <div className="rounded-lg border-2 border-slate-800 p-4 text-center bg-slate-900 text-white shadow-lg">
@@ -1498,6 +1501,12 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           {v?.gap_dollars != null && (
             <div className="text-[10px] text-muted-foreground mt-1">
               {v.gap_dollars > 0 ? "+" : ""}{fmt(v.gap_dollars)} vs estimate
+            </div>
+          )}
+          {data.equity_score != null && (
+            <div className="text-[10px] text-muted-foreground mt-2 pt-2 border-t border-black/5 leading-snug">
+              Alignment {data.equity_score}/100 — how close county and market estimates are
+              (100 = agree; lower = farther apart)
             </div>
           )}
         </div>
