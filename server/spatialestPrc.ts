@@ -56,6 +56,10 @@ export type PrcRecord = {
 
 const PRC_BASE = "https://prc-buncombe.spatialest.com";
 const CACHE_MS = 24 * 60 * 60 * 1000;
+const PRC_SESSION_MS = 10 * 60 * 1000;
+
+let prcSession: { cookie: string; csrfToken: string; expires: number } | null = null;
+let prcColumnsEnsured = false;
 
 export function spatialestPrcUrl(pin: string) {
   return `${PRC_BASE}/#/property/${pin.replace(/-/g, "").trim()}`;
@@ -115,6 +119,15 @@ async function prcRequest(path: string, cookie: string, csrfToken: string) {
   });
   const body = await res.text();
   return { status: res.status, headers: res.headers, body };
+}
+
+async function getPrcSession() {
+  if (prcSession && Date.now() < prcSession.expires) {
+    return { cookie: prcSession.cookie, csrfToken: prcSession.csrfToken };
+  }
+  const session = await establishPrcSession();
+  prcSession = { ...session, expires: Date.now() + PRC_SESSION_MS };
+  return session;
 }
 
 async function establishPrcSession() {
@@ -215,8 +228,13 @@ export function parsePrcRecord(raw: Record<string, unknown>, pin: string): PrcRe
 
 export async function fetchPrcRecord(pin: string): Promise<PrcRecord | null> {
   const id = normalizePin(pin);
-  const { cookie, csrfToken } = await establishPrcSession();
-  const { status, body } = await prcRequest(`api/v1/recordcard/${id}`, cookie, csrfToken);
+  let { cookie, csrfToken } = await getPrcSession();
+  let { status, body } = await prcRequest(`api/v1/recordcard/${id}`, cookie, csrfToken);
+  if (status === 401 || status === 419) {
+    prcSession = null;
+    ({ cookie, csrfToken } = await getPrcSession());
+    ({ status, body } = await prcRequest(`api/v1/recordcard/${id}`, cookie, csrfToken));
+  }
   if (status !== 200) return null;
   try {
     const raw = JSON.parse(body) as Record<string, unknown>;
@@ -291,9 +309,11 @@ type PgPool = {
 };
 
 export async function ensurePrcColumns(pool: PgPool) {
+  if (prcColumnsEnsured) return;
   for (const sql of PRC_COLUMN_DDL) {
     await pool.query(sql).catch(() => {});
   }
+  prcColumnsEnsured = true;
 }
 
 export async function savePrcToDb(pool: PgPool, pin: string, prc: PrcRecord) {

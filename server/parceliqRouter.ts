@@ -16,6 +16,11 @@ import { buildParcelNarrative } from "./parcelNarrative.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
 import { EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
 import { resolveSitusZipForParcel } from "./situsZip.js";
+import {
+  fetchCachedMarketIndexRow,
+  fetchCachedRodSyncAt,
+  fetchCachedZipEquityRow,
+} from "./referenceCache.js";
 import type { SubjectProfile } from "./comparableSales.js";
 
 function toDateLabel(value: unknown): string | null {
@@ -75,82 +80,6 @@ async function buildCompSubject(
   return { subject, situsZip: situsZip || subject.zip };
 }
 
-/** Comp-based fair value — same logic as getParcel detail view. */
-async function computeFairMarketValue(
-  row: Record<string, unknown>,
-  enriched: ReturnType<typeof enrichRow>,
-) {
-  const pin = String(row.pin);
-  const [prc, reappraisalYoY] = await Promise.all([
-    loadPrcForParcel(pool, pin, row).catch(() => null),
-    fetchReappraisalYoY(pool, pin).catch(() => null),
-  ]);
-  const { subject, situsZip } = await buildCompSubject(row, prc, reappraisalYoY?.zipcode);
-  const attrs: ParcelAttrs = {
-    CALCACREAGE: enriched.CALCACREAGE,
-    LANDVALUE: null,
-    TOTALVALUE: enriched.TOTALVALUE,
-    CLASSCD: "R",
-    ZIP: situsZip,
-    SITEADDRESS: enriched.SITEADDRESS,
-  };
-  const [zipEquityRes, marketRes, salesRes, compMatch] = await Promise.all([
-    pool.query(
-      "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
-      [situsZip]
-    ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
-    pool.query(
-      "SELECT metro_name, as_of_date, zhvi_current, zhvi_base, zhvi_base_date, median_sale_current, median_sale_base, appreciation_factor, source FROM parceliq_market_index ORDER BY created_at DESC LIMIT 1"
-    ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
-    pool.query(
-      `SELECT sell_date, selling_price, adj_price, qualified
-       FROM parceliq_sales WHERE pin=$1 AND qualified=TRUE
-       ORDER BY sell_date DESC LIMIT 5`,
-      [String(row.pin)]
-    ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
-    fetchComparableSales(pool, subject),
-  ]);
-
-  const sales = salesRes.rows.map((s) => ({
-    sell_date: s.sell_date ? String(s.sell_date).slice(0, 10) : null,
-    selling_price: Number(s.selling_price),
-    adj_price: s.adj_price != null ? Number(s.adj_price) : null,
-    qualified: Boolean(s.qualified),
-  })) as ComparableSale[];
-
-  return buildValuationDetail(
-    row,
-    attrs,
-    mapZipEquityRow(zipEquityRes.rows[0]),
-    mapMarketIndexRow(marketRes.rows[0]),
-    sales,
-    compMatch.comps,
-    prc,
-    {
-      level: compMatch.matchLevel,
-      summary: compMatch.matchSummary,
-      filters_applied: compMatch.filtersApplied,
-    },
-  );
-}
-
-function applyFairValueToEnriched(
-  enriched: ReturnType<typeof enrichRow>,
-  fairMarketValue: number | null,
-  variancePct: number | null | undefined,
-) {
-  if (fairMarketValue == null) return enriched;
-  const vp = variancePct ?? enriched.variance_pct;
-  return {
-    ...enriched,
-    model_value: fairMarketValue,
-    variance_pct: vp,
-    equity_score: vp != null ? equityScore(vp) : null,
-    flagged: vp != null && Math.abs(vp) > 15,
-    estimate_stale: false,
-  };
-}
-
 function enrichRow(row: Record<string, unknown>) {
   const taxRoll = row.total_value != null ? Number(row.total_value) : null;
   const assessed = effectiveAssessed(row);
@@ -165,7 +94,7 @@ function enrichRow(row: Record<string, unknown>) {
   };
   const prcRollMismatch =
     hasLivePrc && taxRoll != null && taxRoll > 0 && Math.abs(assessed - taxRoll) > taxRoll * 0.05;
-  // Comp-based fair value is filled in search (when querying) and getParcel detail.
+  // Search uses stored preview values; comp-based fair value is computed in getParcel detail.
   const fairValue = prcRollMismatch ? null : fairValueFromRow(row, attrs);
   const cv = assessed;
   const vp =
@@ -240,25 +169,7 @@ export const parceliqRouter = router({
       params.push(input.limit, input.offset);
 
       const { rows } = await pool.query(query, params);
-      const hasQuery = Boolean(input.q?.trim());
-      const parcels = await Promise.all(
-        rows.map(async (row) => {
-          const enriched = enrichRow(row);
-          const needsCompEstimate =
-            hasQuery || enriched.estimate_stale || enriched.model_value == null;
-          if (!needsCompEstimate) return enriched;
-          try {
-            const valuation = await computeFairMarketValue(row, enriched);
-            return applyFairValueToEnriched(
-              enriched,
-              valuation.fair_market_value,
-              valuation.variance_pct,
-            );
-          } catch {
-            return enriched;
-          }
-        }),
-      );
+      const parcels = rows.map((row) => enrichRow(row));
       return {
         parcels,
         count:         parcels.length,
@@ -284,8 +195,10 @@ export const parceliqRouter = router({
       if (!rows.length) throw new Error(`Parcel ${pin} not found`);
       const row = rows[0];
 
-      const prc = await loadPrcForParcel(pool, String(row.pin), row).catch(() => null);
-      const reappraisalYoY = await fetchReappraisalYoY(pool, String(row.pin));
+      const [prc, reappraisalYoY] = await Promise.all([
+        loadPrcForParcel(pool, String(row.pin), row).catch(() => null),
+        fetchReappraisalYoY(pool, String(row.pin)),
+      ]);
 
       const enriched = enrichRow(row);
       const { subject, situsZip } = await buildCompSubject(row, prc, reappraisalYoY?.zipcode);
@@ -295,14 +208,9 @@ export const parceliqRouter = router({
         ZIP: situsZip, SITEADDRESS: enriched.SITEADDRESS,
       };
 
-      const [zipEquityRes, marketRes, salesRes, compMatch, rodSyncRes] = await Promise.all([
-        pool.query(
-          "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
-          [situsZip]
-        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
-        pool.query(
-          "SELECT metro_name, as_of_date, zhvi_current, zhvi_base, zhvi_base_date, median_sale_current, median_sale_base, appreciation_factor, source FROM parceliq_market_index ORDER BY created_at DESC LIMIT 1"
-        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+      const [zipEquityRow, marketIndexRow, salesRes, compMatch, rodSyncAt] = await Promise.all([
+        fetchCachedZipEquityRow(pool, situsZip),
+        fetchCachedMarketIndexRow(pool),
         pool.query(
           `SELECT sell_date, selling_price, adj_price, qualified
            FROM parceliq_sales WHERE pin=$1 AND qualified=TRUE
@@ -310,15 +218,10 @@ export const parceliqRouter = router({
           [String(row.pin)]
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
         fetchComparableSales(pool, subject),
-        pool.query(
-          `SELECT finished_at FROM parceliq_ingest_runs
-           WHERE job_name='register_of_deeds' AND status='success'
-           ORDER BY finished_at DESC LIMIT 1`
-        ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+        fetchCachedRodSyncAt(pool),
       ]);
 
-      const zipEquity = zipEquityRes.rows[0] as ZipEquityRow | undefined;
-      const marketIndex = marketRes.rows[0] as MarketIndexRow | undefined;
+      const marketIndex = marketIndexRow as MarketIndexRow | null;
       const sales = salesRes.rows.map((s) => ({
         sell_date: s.sell_date ? String(s.sell_date).slice(0, 10) : null,
         selling_price: Number(s.selling_price),
@@ -331,8 +234,8 @@ export const parceliqRouter = router({
       const valuation = buildValuationDetail(
         row,
         attrs,
-        mapZipEquityRow(zipEquityRes.rows[0]),
-        mapMarketIndexRow(marketRes.rows[0]),
+        mapZipEquityRow(zipEquityRow ?? undefined),
+        mapMarketIndexRow(marketIndexRow ?? undefined),
         sales,
         nearbyComps,
         prc,
@@ -343,9 +246,8 @@ export const parceliqRouter = router({
         },
       );
 
-      const zipEquityUpdated = zipEquityRes.rows[0]?.updated_at;
-      const rodSyncAt = rodSyncRes.rows[0]?.finished_at;
-      const zillowAsOf = marketIndex?.as_of_date ?? marketRes.rows[0]?.as_of_date;
+      const zipEquityUpdated = zipEquityRow?.updated_at;
+      const zillowAsOf = marketIndex?.as_of_date ?? marketIndexRow?.as_of_date;
 
       const dataFreshness = buildDataFreshness(row, String(row.pin), sales, {
         salesDataAsOf: toDateLabel(rodSyncAt),

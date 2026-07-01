@@ -1547,7 +1547,7 @@ function ExplorerSearchView() {
 
   const { data, isLoading, isFetching } = trpc.parceliq.searchParcels.useQuery(
     { q: search || undefined, classCd: classCd || undefined, limit: 25 },
-    { keepPreviousData: true }
+    { keepPreviousData: true, staleTime: 30_000 },
   );
 
   const openDetail = (pin: string, address: string) => {
@@ -1693,9 +1693,13 @@ function ExplorerSearchView() {
 
 function ParcelDetailFetcher({ pin }: { pin: string }) {
   const { data, isLoading, isError, error, isFetching } =
-    trpc.parceliq.getParcel.useQuery({ pin }, { retry: 1 });
+    trpc.parceliq.getParcel.useQuery(
+      { pin },
+      { retry: 1, staleTime: 60_000, keepPreviousData: true },
+    );
 
   const dataMatchesPin = data ? pinsMatch(data.PIN, pin) : false;
+  const ready = Boolean(data && dataMatchesPin);
 
   if (isError && !isFetching) {
     return (
@@ -1705,13 +1709,30 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
       </div>
     );
   }
-  if (isLoading || isFetching || !dataMatchesPin) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">Loading valuation detail… fetching live Spatialest PRC when available.</p>;
+  if (!ready) {
+    if (isLoading || isFetching) {
+      return (
+        <p className="text-sm text-muted-foreground py-8 text-center">
+          Loading valuation detail… fetching live Spatialest PRC when available.
+        </p>
+      );
+    }
+    return (
+      <p className="text-sm text-muted-foreground py-8 text-center">
+        No detail returned for this property.
+      </p>
+    );
   }
-  if (!data) {
-    return <p className="text-sm text-muted-foreground py-8 text-center">No detail returned for this property.</p>;
-  }
-  return <ParcelDetailBody data={data as Record<string, any>} />;
+  return (
+    <div>
+      {isFetching && (
+        <p className="text-xs text-center text-muted-foreground pb-2">
+          Refreshing county record…
+        </p>
+      )}
+      <ParcelDetailBody data={data as Record<string, any>} />
+    </div>
+  );
 }
 
 function NarrativeTopicCard({ section }: { section: Record<string, any> }) {
