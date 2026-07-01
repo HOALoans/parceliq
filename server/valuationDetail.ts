@@ -383,7 +383,7 @@ export function buildValuationDetail(
 
   steps.push({
     step: step++,
-    title: "Market estimate (headline)",
+    title: "Parcelogik Fair Value",
     source: marketMethodLabel,
     detail:
       marketValue != null

@@ -96,7 +96,7 @@ export function buildParcelNarrative(opts: {
       ? `Value review: ${money(yoy.value_2021)} in 2021 → ${money(yoy.value_2026)} now (+${pct(yoy.change_pct, true)}).`
       : `County tax value today: ${money(assessed)}.`,
     market != null
-      ? `Separate sale-price estimate (not your tax bill): ${money(market)}.`
+      ? `Parcelogik Fair Value: ${money(market)}.`
       : null,
     "These answer different questions — the review cycle sets your tax value; sales evidence is optional context.",
   ].filter((s): s is string => !!s);

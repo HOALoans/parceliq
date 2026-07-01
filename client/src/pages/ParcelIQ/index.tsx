@@ -37,6 +37,8 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 
+const PARCELOGIK_FAIR_VALUE = "Parcelogik Fair Value";
+
 // ── nav tabs ─────────────────────────────────────────────────────────
 type Tab = "dashboard" | "explorer" | "revenue" | "equity" | "overrides" | "audit";
 
@@ -198,8 +200,8 @@ function ModelValueCell({
   return (
     <div>
       <span className="font-mono text-sm">{fmt(value)}</span>
-      {stale && (
-        <span className="block text-[9px] text-muted-foreground">Open View for comp-based estimate</span>
+      {stale && value == null && (
+        <span className="block text-[9px] text-muted-foreground">Computing… open View</span>
       )}
     </div>
   );
@@ -355,11 +357,93 @@ function MarketEstimatePriorityPanel({
   );
 }
 
-function saleEstimateTitle(method: string | undefined): string {
-  if (method === "own_sale") return "Estimate from this home's sale";
-  if (method === "comparable_sales") return "Comparable sales estimate";
-  if (method === "gradient_model") return "Characteristics-based estimate";
-  return "Sale price estimate";
+function saleEstimateMethodHint(method: string | undefined): string {
+  if (method === "own_sale") return "From this home's qualified sale";
+  if (method === "comparable_sales") return "From nearby comparable sales";
+  if (method === "gradient_model") return "From property characteristics";
+  return "From county records and deed sales";
+}
+
+/** Optional uniformity / ZIP-trend formulas — kept for analysts, not competing with fair value. */
+function UniformityContextPanel({
+  v,
+  zillowAdjusted,
+  equityExtrap,
+  fairValue,
+}: {
+  v: Record<string, any> | undefined;
+  zillowAdjusted?: number | null;
+  equityExtrap?: number;
+  fairValue?: number | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const metroAdjusted = v?.equity_extrapolation?.metro_adjusted_value as number | undefined;
+  const showZillow =
+    zillowAdjusted != null &&
+    (fairValue == null || Math.abs(zillowAdjusted - fairValue) > fairValue * 0.03);
+  const hasContent = showZillow || equityExtrap != null || metroAdjusted != null;
+  if (!hasContent) return null;
+
+  const preview: string[] = [];
+  if (showZillow) preview.push(`ZIP ratio + trend ${fmt(zillowAdjusted)}`);
+  if (equityExtrap != null) preview.push(`ratio extrapolation ${fmt(equityExtrap)}`);
+  if (metroAdjusted != null && metroAdjusted !== equityExtrap) {
+    preview.push(`metro-adjusted ${fmt(metroAdjusted)}`);
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/30">
+      <button
+        type="button"
+        className="w-full flex items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50/60 rounded-lg transition-colors"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-500">Uniformity &amp; ZIP trend context</p>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+            {open
+              ? "Equity-study math for policy and uniformity checks — not Parcelogik Fair Value."
+              : `Optional · ${preview.join(" · ")}`}
+          </p>
+        </div>
+        {open ? (
+          <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
+        ) : (
+          <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
+        )}
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-dashed border-slate-200 pt-3 text-xs text-muted-foreground leading-relaxed">
+          <p>
+            <strong className="text-slate-600">Parcelogik Fair Value</strong> above comes from this
+            home&apos;s own sales or matched nearby deeds. The figures below apply ZIP-wide
+            assessment-to-sale ratios and regional price trends — useful when asking &ldquo;is this
+            ZIP under-assessed on average?&rdquo; but not a substitute for property-specific comps.
+          </p>
+          {showZillow && (
+            <p>
+              <span className="text-slate-600 font-medium">ZIP ratio + metro growth (bulk):</span>{" "}
+              {fmt(zillowAdjusted)} — county value scaled by the ZIP&apos;s typical sale ratio and
+              regional appreciation since the last cycle.
+            </p>
+          )}
+          {equityExtrap != null && (
+            <p>
+              <span className="text-slate-600 font-medium">Assessment ÷ ZIP median ratio:</span>{" "}
+              {fmt(equityExtrap)} — {equityExtrapolationExplainer(v)}
+            </p>
+          )}
+          {metroAdjusted != null && metroAdjusted !== equityExtrap && (
+            <p>
+              <span className="text-slate-600 font-medium">Metro trend on ratio extrapolation:</span>{" "}
+              {fmt(metroAdjusted)} — applies ZHVI regional index to the ratio figure above.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Sale estimate + comps — separate from the value-review story; explained in plain language. */
@@ -371,8 +455,6 @@ function SalePriceEstimateSection({
   varPct,
   verdict,
   verdictStyles,
-  equityExtrap,
-  zillowAdjusted,
 }: {
   v: Record<string, any> | undefined;
   assessed: number | null | undefined;
@@ -381,8 +463,6 @@ function SalePriceEstimateSection({
   varPct: number | null | undefined;
   verdict: string | undefined;
   verdictStyles: string;
-  equityExtrap: number | undefined;
-  zillowAdjusted?: number | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasSaleContent =
@@ -394,11 +474,10 @@ function SalePriceEstimateSection({
     return (
       <Card className="border border-dashed border-slate-200 bg-slate-50/50">
         <CardContent className="py-4 px-4 text-sm text-muted-foreground leading-relaxed">
-          <p className="font-medium text-slate-800">Sale price estimate</p>
+          <p className="font-medium text-slate-800">{PARCELOGIK_FAIR_VALUE}</p>
           <p className="mt-1">
-            We don&apos;t have enough recent sales of similar homes nearby to suggest what this
-            property might sell for today. The value review above is still the assessor&apos;s
-            official tax value.
+            We don&apos;t have enough recent sales of similar homes nearby to estimate fair value.
+            The value review above is still the assessor&apos;s official tax value.
           </p>
         </CardContent>
       </Card>
@@ -411,13 +490,13 @@ function SalePriceEstimateSection({
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="space-y-2 max-w-2xl">
             <CardTitle className="text-sm font-semibold text-slate-800">
-              {saleEstimateTitle(marketEst?.method)} — a different question
+              {PARCELOGIK_FAIR_VALUE}
             </CardTitle>
             <p className="text-sm text-muted-foreground leading-relaxed">
               The <strong>value review above</strong> is the assessor&apos;s official tax value.
-              This figure is Parcelogik&apos;s <strong>market estimate</strong> — what nearby deed
-              sales suggest a buyer might pay today. It is not the county value, not a Zillow
-              Zestimate, and not an official appraisal.
+              This is our <strong>market-based fair value</strong> — what nearby deed sales suggest
+              a buyer might pay today ({saleEstimateMethodHint(marketEst?.method)}). It is not the
+              county value, not a Zillow Zestimate, and not an official appraisal.
             </p>
           </div>
           <Button
@@ -438,7 +517,7 @@ function SalePriceEstimateSection({
       <CardContent className="px-4 pb-4 space-y-4">
         <div className="flex flex-wrap items-baseline gap-4 rounded-lg border bg-white px-4 py-3">
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Estimate</p>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{PARCELOGIK_FAIR_VALUE}</p>
             <p className="text-2xl font-serif font-semibold text-slate-900">{fmt(fairValue)}</p>
           </div>
           <div className="text-sm text-muted-foreground">
@@ -485,19 +564,6 @@ function SalePriceEstimateSection({
 
         {expanded && (
           <div className="space-y-4 border-t pt-4">
-            {zillowAdjusted != null &&
-              fairValue != null &&
-              Math.abs(zillowAdjusted - fairValue) > fairValue * 0.03 && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                <p className="font-medium text-slate-900">ZIP trend reference (not used above)</p>
-                <p className="mt-1 leading-relaxed">
-                  A separate bulk calculation applied the ZIP&apos;s typical assessment-to-sale
-                  ratio plus regional price growth to this property:{" "}
-                  <strong>{fmt(zillowAdjusted)}</strong>. That is a uniformity/trend metric — not
-                  the comparable-sales estimate shown here.
-                </p>
-              </div>
-            )}
             <p className="text-sm text-slate-600 leading-relaxed">{marketEstimateExplainer(v)}</p>
             <MarketEstimatePriorityPanel marketEst={marketEst} fairValue={fairValue} />
 
@@ -578,15 +644,6 @@ function SalePriceEstimateSection({
               </div>
             )}
 
-            {equityExtrap != null && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
-                  ZIP-wide comparison (uniformity study — not used for the estimate above)
-                </p>
-                <p className="text-xl font-serif font-semibold text-amber-950">{fmt(equityExtrap)}</p>
-                <p className="text-sm text-amber-950/90 leading-relaxed mt-2">{equityExtrapolationExplainer(v)}</p>
-              </div>
-            )}
           </div>
         )}
       </CardContent>
@@ -600,6 +657,7 @@ function ValuationTimeline({ steps }: { steps: Array<Record<string, any>> }) {
   const marketSteps = steps.filter((s) => (s.kind ?? "market") === "market");
   const contextSteps = steps.filter((s) => s.kind === "context");
   const inputSteps = steps.filter((s) => s.kind === "input");
+  const [contextOpen, setContextOpen] = useState(false);
 
   const renderStep = (step: Record<string, any>, lineColor: string, dotBorder: string) => (
     <div key={step.step} className="relative pl-8 pb-6 last:pb-0">
@@ -641,8 +699,20 @@ function ValuationTimeline({ steps }: { steps: Array<Record<string, any>> }) {
       )}
       {contextSteps.length > 0 && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-3">Equity context (not the selected market method)</p>
-          <div className="relative">{contextSteps.map((s) => renderStep(s, "bg-amber-200", "border-amber-500"))}</div>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-2 text-xs font-medium text-slate-500 mb-3 hover:text-slate-700"
+            onClick={() => setContextOpen((o) => !o)}
+            aria-expanded={contextOpen}
+          >
+            <span>Uniformity context ({contextSteps.length} steps)</span>
+            {contextOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+          {contextOpen && (
+            <div className="relative opacity-90">
+              {contextSteps.map((s) => renderStep(s, "bg-amber-200", "border-amber-500"))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1207,7 +1277,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                 <TableHead>Address</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>County Value</TableHead>
-                <TableHead title="Bulk preview — open View for comparable-sales estimate">Market est.</TableHead>
+                <TableHead title="Comparable-sales fair value — matches property detail view">{PARCELOGIK_FAIR_VALUE}</TableHead>
                 <TableHead>The Gap</TableHead>
               </TableRow>
             </TableHeader>
@@ -1550,7 +1620,7 @@ function ExplorerSearchView() {
                 <TableHead>PIN</TableHead><TableHead>Address</TableHead>
                 <TableHead>Owner</TableHead><TableHead>Acres</TableHead>
                 <TableHead>County Value</TableHead>
-                <TableHead title="Bulk preview — open View for comparable-sales estimate">Market est.</TableHead>
+                <TableHead title="Comparable-sales fair value — matches property detail view">{PARCELOGIK_FAIR_VALUE}</TableHead>
                 <TableHead>The Gap</TableHead>
                 <TableHead title="How closely county value matches sale evidence (100 = match)">Match</TableHead>
                 <TableHead />
@@ -1813,26 +1883,23 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
 
   return (
     <div className="space-y-5">
-      {reappraisalYoY && <ThenVsNowPanel address={address} yoy={reappraisalYoY} />}
-
-      {!reappraisalYoY && (
-        <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 px-4 py-3 flex flex-wrap items-baseline justify-between gap-2">
-          <div>
-            <p className="text-xs text-blue-900 font-medium uppercase tracking-wide">Current county tax value</p>
-            <p className="text-2xl font-serif font-semibold text-blue-950">{fmt(assessed)}</p>
+      {(assessed != null || fairValue != null) && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 px-4 py-3">
+            <p className="text-xs text-blue-900 font-medium uppercase tracking-wide">County tax value</p>
+            <p className="text-2xl font-serif font-semibold text-blue-950 mt-1">{fmt(assessed)}</p>
           </div>
-          <p className="text-xs text-muted-foreground max-w-sm">
-            {prc ? "From live county property record" : "From county tax file"}
-          </p>
+          <div className="rounded-lg border-2 border-slate-300 bg-white px-4 py-3">
+            <p className="text-xs text-slate-700 font-medium uppercase tracking-wide">{PARCELOGIK_FAIR_VALUE}</p>
+            <p className="text-2xl font-serif font-semibold text-slate-900 mt-1">{fmt(fairValue)}</p>
+            {marketEst?.method_label && (
+              <p className="text-[10px] text-muted-foreground mt-1">{marketEst.method_label}</p>
+            )}
+          </div>
         </div>
       )}
 
-      {reappraisalYoY && (
-        <p className="text-sm text-muted-foreground px-1 -mt-2">
-          Today&apos;s county tax value on file: <strong className="text-slate-800">{fmt(assessed)}</strong>
-          {prc ? " (live county record)" : ""}
-        </p>
-      )}
+      {reappraisalYoY && <ThenVsNowPanel address={address} yoy={reappraisalYoY} />}
 
       {narrative && <ParcelNarrativePanel narrative={narrative} />}
 
@@ -1844,6 +1911,11 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         varPct={varPct}
         verdict={verdict}
         verdictStyles={verdictStyles}
+      />
+
+      <UniformityContextPanel
+        v={v}
+        fairValue={fairValue}
         equityExtrap={equityExtrap}
         zillowAdjusted={data.zillow_adjusted_value as number | null | undefined}
       />
@@ -1912,10 +1984,10 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
       )}
 
       {v?.zip_equity && (
-        <Card className="border-amber-200">
+        <Card className="border border-dashed border-slate-200 bg-slate-50/30">
           <CardHeader className="py-3 px-4 pb-1">
-            <CardTitle className="text-sm font-semibold">
-              ZIP {v.zip_equity.zip_code} · {v.zip_equity.zip_name} · equity study
+            <CardTitle className="text-sm font-medium text-slate-600">
+              ZIP uniformity study · {v.zip_equity.zip_code} {v.zip_equity.zip_name}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-2 text-sm">
@@ -1945,13 +2017,16 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
       )}
 
       {v?.zillow && (
-        <Card className="border-blue-200 bg-blue-50/40">
+        <Card className="border border-dashed border-slate-200 bg-slate-50/30">
           <CardHeader className="py-3 px-4 pb-1">
-            <CardTitle className="text-sm font-semibold">Metro price trend · {v.zillow.metro_name}</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-600">
+              Regional price index (context) · {v.zillow.metro_name}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3 text-sm">
-            <p className="text-xs text-blue-900 leading-relaxed">
-              ZHVI is a regional index — not a Zestimate for this address. Used only for time-adjusting old sales or equity extrapolation.
+          <CardContent className="px-4 pb-4 space-y-3 text-xs text-muted-foreground">
+            <p className="leading-relaxed">
+              ZHVI is a regional index — not a Zestimate for this address. Used for time-adjusting old
+              sales and uniformity context, not for Parcelogik Fair Value.
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>

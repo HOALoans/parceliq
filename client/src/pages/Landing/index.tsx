@@ -13,6 +13,19 @@ import {
   Handshake,
 } from "lucide-react";
 
+type CountyStatus = "live" | "planned";
+
+type CountyCard = {
+  slug: string;
+  name: string;
+  state: string;
+  status: CountyStatus;
+  href: string;
+  blurb: string;
+  stats: string[];
+  highlights?: { label: string; value: string; sub: string }[];
+};
+
 const DATA_SOURCES = [
   {
     title: "County property records",
@@ -27,44 +40,55 @@ const DATA_SOURCES = [
     detail: "We match sales by size, type, and age in your neighborhood — not a blind average across the whole ZIP.",
   },
   {
-    title: "2021 → 2026 new value review",
-    detail: "What the county said your home was worth five years ago vs. what it says today — home by home.",
+    title: "Value review cycles",
+    detail: "When a county publishes prior-cycle and current-cycle values, we show the change home by home.",
   },
   {
     title: "Neighborhood price trends",
-    detail: "Trusted market trackers show how fast prices are moving in your area — kept separate from the headline numbers.",
+    detail: "Regional market trackers show how fast prices are moving in your area — kept separate from the headline numbers.",
   },
 ];
 
-const COUNTIES = [
+const COUNTIES: CountyCard[] = [
   {
     slug: "buncombe",
     name: "Buncombe County",
     state: "North Carolina",
-    status: "live" as const,
-    blurb: "112,000+ properties · Asheville metro · 2026 new value review",
-    stats: ["Fairness by ZIP", "Live county data", "2021→2026 review", "85k+ home sales"],
+    status: "live",
+    href: "/buncombe",
+    blurb: "Our first live county — Asheville metro, with full value-review and sales data.",
+    stats: ["Fairness by ZIP", "Live county records", "Deed sales", "Value review"],
+    highlights: [
+      { label: "Properties on file", value: "112k+", sub: "Prior & current cycle" },
+      { label: "Typical review increase", value: "+61%", sub: "County median (matched homes)" },
+      { label: "Neighborhood range", value: "28 pts", sub: "Lowest vs. highest ZIP" },
+    ],
   },
   {
     slug: "coming-soon",
-    name: "Your county",
-    state: "Coming soon",
-    status: "planned" as const,
-    blurb: "Parcelogik is designed to work alongside assessor offices — same clear methodology, local data.",
-    stats: ["Multi-county ready", "Contact us"],
+    name: "More counties",
+    state: "In progress",
+    status: "planned",
+    href: "#counties",
+    blurb: "Parcelogik is built to onboard new counties with the same transparent methodology and local data pipelines.",
+    stats: ["Assessor partnerships", "County-by-county rollout", "Contact us"],
   },
 ];
 
-function prefetchBuncombeData(utils: ReturnType<typeof trpc.useUtils>) {
-  void utils.parceliq.assessmentRatios.prefetch();
+function prefetchCountyData(utils: ReturnType<typeof trpc.useUtils>, slug: string) {
+  if (slug === "buncombe") {
+    void utils.parceliq.assessmentRatios.prefetch();
+  }
 }
 
-function BuncombeLink({
-  href = "/buncombe",
+function CountyLink({
+  href,
+  slug,
   className,
   children,
 }: {
-  href?: string;
+  href: string;
+  slug?: string;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -73,7 +97,7 @@ function BuncombeLink({
     <Link
       href={href}
       className={className}
-      onMouseEnter={() => prefetchBuncombeData(utils)}
+      onMouseEnter={() => slug && prefetchCountyData(utils, slug)}
     >
       {children}
     </Link>
@@ -82,10 +106,13 @@ function BuncombeLink({
 
 export default function LandingPage() {
   const utils = trpc.useUtils();
+  const liveCounties = COUNTIES.filter((c) => c.status === "live");
 
   useEffect(() => {
-    prefetchBuncombeData(utils);
-  }, [utils]);
+    for (const c of liveCounties) {
+      prefetchCountyData(utils, c.slug);
+    }
+  }, [utils, liveCounties]);
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
@@ -99,11 +126,11 @@ export default function LandingPage() {
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">Transparent property assessment, built with assessors</p>
           </div>
-          <BuncombeLink>
+          <a href="#counties">
             <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold">
-              Buncombe County <ArrowRight className="w-4 h-4 ml-1" />
+              Counties <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
-          </BuncombeLink>
+          </a>
         </div>
       </header>
 
@@ -119,19 +146,26 @@ export default function LandingPage() {
           <p className="text-slate-300 text-lg leading-relaxed">
             Parcelogik helps property owners understand county values — what changed in the latest
             review, how market trends factor in, and how a specific home compares to countywide
-            benchmarks. We support assessor transparency, not second-guessing their work.
+            benchmarks. One platform, county by county.
           </p>
           <div className="flex flex-wrap justify-center gap-3 pt-2">
-            <BuncombeLink>
+            <a href="#counties">
               <Button size="lg" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold">
-                Explore Buncombe County
+                Choose your county
               </Button>
-            </BuncombeLink>
+            </a>
+            {liveCounties.length === 1 && (
+              <CountyLink href={liveCounties[0].href} slug={liveCounties[0].slug}>
+                <Button size="lg" variant="outline" className="border-slate-500 text-white hover:bg-slate-800">
+                  Open {liveCounties[0].name}
+                </Button>
+              </CountyLink>
+            )}
           </div>
         </div>
       </section>
 
-      {/* Why value reviews happen — respectful of assessor process */}
+      {/* Assessor partnership */}
       <section className="px-6 py-14 max-w-5xl mx-auto w-full">
         <div className="rounded-xl border-2 border-slate-200 bg-white p-8 sm:p-10 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
@@ -149,9 +183,7 @@ export default function LandingPage() {
             Parcelogik is designed as a <strong>transparency layer</strong>, not a replacement. We
             surface the same county records, deed sales, and review-cycle data assessors rely on,
             explained in plain language so owners can see <em>what</em> changed, <em>why</em> it
-            changed, and <em>how</em> their home compares to county benchmarks. Our goal is to
-            reduce confusion, support informed appeals, and help assessor offices communicate their
-            work more clearly.
+            changed, and <em>how</em> their home compares to county benchmarks.
           </p>
         </div>
       </section>
@@ -162,7 +194,7 @@ export default function LandingPage() {
           {[
             {
               title: "What changed?",
-              text: "See what the county said your home was worth in 2021 vs. what it says now — in dollars and plain percentages.",
+              text: "See what the county said your home was worth in the prior cycle vs. the current review — in dollars and plain percentages.",
             },
             {
               title: "Why did it change?",
@@ -206,7 +238,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* How Parcelogik does the math — 3 steps */}
+      {/* How Parcelogik does the math */}
       <section className="px-6 py-14 max-w-5xl mx-auto w-full">
         <div className="rounded-xl border-2 border-slate-800 bg-slate-900 text-white p-8 sm:p-10">
           <h3 className="text-xl font-serif font-semibold text-amber-300 mb-4">
@@ -217,17 +249,17 @@ export default function LandingPage() {
               {
                 n: 1,
                 title: "We look at real sales",
-                sub: "Actual receipts from homes bought and sold in Buncombe County over the last few years.",
+                sub: "Actual deed prices from homes bought and sold in the county — the strongest market evidence.",
               },
               {
                 n: 2,
                 title: "We check neighborhood trends",
-                sub: "Trusted market trackers (like Zillow) show how fast prices are moving in your specific area.",
+                sub: "Regional market trackers show how fast prices are moving in your area — separate from the headline estimate.",
               },
               {
                 n: 3,
-                title: "We compare the two timelines",
-                sub: "We compare the county's prior-cycle values to the new review to show how growth was distributed across the county.",
+                title: "We compare review cycles",
+                sub: "Prior-cycle vs. current-cycle county values show how growth was distributed across the jurisdiction.",
               },
             ].map(({ n, title, sub }) => (
               <li key={n} className="flex gap-4 items-start">
@@ -244,40 +276,32 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* New value review */}
+      {/* Value review feature — generic */}
       <section className="bg-indigo-50 border-y border-indigo-100 px-6 py-14">
         <div className="max-w-5xl mx-auto">
           <h3 className="text-2xl font-serif font-semibold text-slate-900 mb-3">
-            2021 → 2026 new value review
+            Value review cycles, explained
           </h3>
           <p className="text-slate-600 leading-relaxed max-w-3xl mb-6">
-            Buncombe&apos;s latest value review is live in Parcelogik. Look up any address to see
-            Then vs. Now — and how your home&apos;s change compares to county benchmarks.
+            When a county completes a periodic reassessment, Parcelogik maps each property from the
+            prior cycle to the new values. Owners see Then vs. Now for their home and how that change
+            compares to county and neighborhood medians — the same uniformity lens assessors use.
           </p>
-          <div className="grid sm:grid-cols-3 gap-4 text-center">
-            {[
-              { label: "Matched homes", value: "112k+", sub: "2021 & 2026 on file" },
-              { label: "Typical county increase", value: "+61%", sub: "Across matched homes" },
-              { label: "Neighborhood range", value: "28 pts", sub: "Lowest vs. highest ZIP" },
-            ].map(({ label, value, sub }) => (
-              <div key={label} className="rounded-lg border border-indigo-200 bg-white p-5">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-                <p className="text-2xl font-serif font-semibold mt-1 text-indigo-950">{value}</p>
-                <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
-              </div>
-            ))}
-          </div>
+          <p className="text-sm text-indigo-900/80">
+            Live counties show real numbers on their dashboard. More jurisdictions are onboarding.
+          </p>
         </div>
       </section>
 
       {/* Counties */}
-      <section className="px-6 py-14 max-w-5xl mx-auto w-full flex-1">
+      <section id="counties" className="px-6 py-14 max-w-5xl mx-auto w-full flex-1 scroll-mt-4">
         <div className="flex items-center gap-2 mb-2">
           <MapPin className="w-5 h-5 text-slate-700" />
           <h3 className="text-2xl font-serif font-semibold">Counties</h3>
         </div>
         <p className="text-muted-foreground mb-8 max-w-2xl">
-          Parcelogik is designed to scale county by county — same honest approach, local data.
+          Parcelogik rolls out one county at a time. Each jurisdiction gets the same transparent
+          methodology with local assessor records, deed sales, and review-cycle data.
         </p>
         <div className="grid sm:grid-cols-2 gap-4">
           {COUNTIES.map((c) => (
@@ -297,7 +321,7 @@ export default function LandingPage() {
                     </span>
                   ) : (
                     <span className="text-[10px] uppercase font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full">
-                      Planned
+                      Coming soon
                     </span>
                   )}
                 </div>
@@ -311,12 +335,27 @@ export default function LandingPage() {
                     </span>
                   ))}
                 </div>
-                {c.status === "live" && (
-                  <BuncombeLink>
+                {c.highlights && (
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+                    {c.highlights.map((h) => (
+                      <div key={h.label} className="text-center">
+                        <p className="text-[9px] uppercase tracking-wide text-muted-foreground">{h.label}</p>
+                        <p className="text-lg font-serif font-semibold text-indigo-950">{h.value}</p>
+                        <p className="text-[9px] text-muted-foreground leading-tight">{h.sub}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {c.status === "live" ? (
+                  <CountyLink href={c.href} slug={c.slug}>
                     <Button className="w-full bg-slate-900 hover:bg-slate-800">
                       Open dashboard <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
-                  </BuncombeLink>
+                  </CountyLink>
+                ) : (
+                  <Button className="w-full" variant="outline" disabled>
+                    Not available yet
+                  </Button>
                 )}
               </CardContent>
             </Card>
@@ -330,7 +369,7 @@ export default function LandingPage() {
           {[
             { icon: Scale, title: "Fairness check", text: "Is everyone being treated the same across neighborhoods?" },
             { icon: FileSearch, title: "Appeal support", text: "Compare your county value to real sales evidence." },
-            { icon: Building2, title: "Policy & budgets", text: "See who bore the largest increases in the new value review." },
+            { icon: Building2, title: "Policy & budgets", text: "Track how value reviews affect owners ZIP by ZIP." },
           ].map(({ icon: Icon, title, text }) => (
             <div key={title} className="space-y-2">
               <Icon className="w-8 h-8 mx-auto text-amber-600" />
@@ -344,9 +383,9 @@ export default function LandingPage() {
       <footer className="bg-slate-900 text-slate-400 px-6 py-8 text-center text-xs">
         <p>
           Parcelogik.com · Transparent assessment data · Not a licensed appraisal ·{" "}
-          <BuncombeLink className="text-amber-400 hover:underline">
-            Buncombe County
-          </BuncombeLink>
+          <a href="#counties" className="text-amber-400 hover:underline">
+            Counties
+          </a>
         </p>
       </footer>
     </div>

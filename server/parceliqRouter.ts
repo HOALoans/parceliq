@@ -38,6 +38,102 @@ function effectiveAssessed(row: Record<string, unknown>): number {
   return prc > 0 ? prc : roll;
 }
 
+function mapZipEquityRow(row: Record<string, unknown> | undefined): ZipEquityRow | null {
+  if (!row) return null;
+  return {
+    ...row,
+    median_ratio: Number(row.median_ratio),
+    sample_count: Number(row.sample_count),
+    avg_assessed: row.avg_assessed != null ? Number(row.avg_assessed) : null,
+    avg_sale_price: row.avg_sale_price != null ? Number(row.avg_sale_price) : null,
+  } as ZipEquityRow;
+}
+
+function mapMarketIndexRow(row: Record<string, unknown> | undefined): MarketIndexRow | null {
+  if (!row) return null;
+  return {
+    ...row,
+    zhvi_current: row.zhvi_current != null ? Number(row.zhvi_current) : null,
+    zhvi_base: row.zhvi_base != null ? Number(row.zhvi_base) : null,
+    median_sale_current: row.median_sale_current != null ? Number(row.median_sale_current) : null,
+    median_sale_base: row.median_sale_base != null ? Number(row.median_sale_base) : null,
+    appreciation_factor: Number(row.appreciation_factor),
+  } as MarketIndexRow;
+}
+
+/** Comp-based fair value — same logic as getParcel detail view. */
+async function computeFairMarketValue(
+  row: Record<string, unknown>,
+  enriched: ReturnType<typeof enrichRow>,
+) {
+  const prc = await loadPrcForParcel(pool, String(row.pin), row).catch(() => null);
+  const attrs: ParcelAttrs = {
+    CALCACREAGE: enriched.CALCACREAGE,
+    LANDVALUE: null,
+    TOTALVALUE: enriched.TOTALVALUE,
+    CLASSCD: "R",
+    ZIP: enriched.POSTAL_CODE,
+    SITEADDRESS: enriched.SITEADDRESS,
+  };
+  const zip = enriched.POSTAL_CODE;
+  const subject = buildSubjectProfile(row, prc);
+  const [zipEquityRes, marketRes, salesRes, compMatch] = await Promise.all([
+    pool.query(
+      "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
+      [zip]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+    pool.query(
+      "SELECT metro_name, as_of_date, zhvi_current, zhvi_base, zhvi_base_date, median_sale_current, median_sale_base, appreciation_factor, source FROM parceliq_market_index ORDER BY created_at DESC LIMIT 1"
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+    pool.query(
+      `SELECT sell_date, selling_price, adj_price, qualified
+       FROM parceliq_sales WHERE pin=$1 AND qualified=TRUE
+       ORDER BY sell_date DESC LIMIT 5`,
+      [String(row.pin)]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
+    fetchComparableSales(pool, subject),
+  ]);
+
+  const sales = salesRes.rows.map((s) => ({
+    sell_date: s.sell_date ? String(s.sell_date).slice(0, 10) : null,
+    selling_price: Number(s.selling_price),
+    adj_price: s.adj_price != null ? Number(s.adj_price) : null,
+    qualified: Boolean(s.qualified),
+  })) as ComparableSale[];
+
+  return buildValuationDetail(
+    row,
+    attrs,
+    mapZipEquityRow(zipEquityRes.rows[0]),
+    mapMarketIndexRow(marketRes.rows[0]),
+    sales,
+    compMatch.comps,
+    prc,
+    {
+      level: compMatch.matchLevel,
+      summary: compMatch.matchSummary,
+      filters_applied: compMatch.filtersApplied,
+    },
+  );
+}
+
+function applyFairValueToEnriched(
+  enriched: ReturnType<typeof enrichRow>,
+  fairMarketValue: number | null,
+  variancePct: number | null | undefined,
+) {
+  if (fairMarketValue == null) return enriched;
+  const vp = variancePct ?? enriched.variance_pct;
+  return {
+    ...enriched,
+    model_value: fairMarketValue,
+    variance_pct: vp,
+    equity_score: vp != null ? equityScore(vp) : null,
+    flagged: vp != null && Math.abs(vp) > 15,
+    estimate_stale: false,
+  };
+}
+
 function enrichRow(row: Record<string, unknown>) {
   const taxRoll = row.total_value != null ? Number(row.total_value) : null;
   const assessed = effectiveAssessed(row);
@@ -52,7 +148,7 @@ function enrichRow(row: Record<string, unknown>) {
   };
   const prcRollMismatch =
     hasLivePrc && taxRoll != null && taxRoll > 0 && Math.abs(assessed - taxRoll) > taxRoll * 0.05;
-  // Comp-based market estimate is computed in getParcel only; list view stays blank when PRC just updated.
+  // Comp-based fair value is filled in search (when querying) and getParcel detail.
   const fairValue = prcRollMismatch ? null : fairValueFromRow(row, attrs);
   const cv = assessed;
   const vp =
@@ -127,10 +223,29 @@ export const parceliqRouter = router({
       params.push(input.limit, input.offset);
 
       const { rows } = await pool.query(query, params);
+      const hasQuery = Boolean(input.q?.trim());
+      const parcels = await Promise.all(
+        rows.map(async (row) => {
+          const enriched = enrichRow(row);
+          const needsCompEstimate =
+            hasQuery || enriched.estimate_stale || enriched.model_value == null;
+          if (!needsCompEstimate) return enriched;
+          try {
+            const valuation = await computeFairMarketValue(row, enriched);
+            return applyFairValueToEnriched(
+              enriched,
+              valuation.fair_market_value,
+              valuation.variance_pct,
+            );
+          } catch {
+            return enriched;
+          }
+        }),
+      );
       return {
-        parcels:       rows.map(enrichRow),
-        count:         rows.length,
-        exceededLimit: rows.length === input.limit,
+        parcels,
+        count:         parcels.length,
+        exceededLimit: parcels.length === input.limit,
         source:        "Parcelogik Database (Buncombe County 2025)",
       };
     }),
@@ -200,25 +315,8 @@ export const parceliqRouter = router({
       const valuation = buildValuationDetail(
         row,
         attrs,
-        zipEquity
-          ? {
-              ...zipEquity,
-              median_ratio: Number(zipEquity.median_ratio),
-              sample_count: Number(zipEquity.sample_count),
-              avg_assessed: zipEquity.avg_assessed != null ? Number(zipEquity.avg_assessed) : null,
-              avg_sale_price: zipEquity.avg_sale_price != null ? Number(zipEquity.avg_sale_price) : null,
-            }
-          : null,
-        marketIndex
-          ? {
-              ...marketIndex,
-              zhvi_current: marketIndex.zhvi_current != null ? Number(marketIndex.zhvi_current) : null,
-              zhvi_base: marketIndex.zhvi_base != null ? Number(marketIndex.zhvi_base) : null,
-              median_sale_current: marketIndex.median_sale_current != null ? Number(marketIndex.median_sale_current) : null,
-              median_sale_base: marketIndex.median_sale_base != null ? Number(marketIndex.median_sale_base) : null,
-              appreciation_factor: Number(marketIndex.appreciation_factor),
-            }
-          : null,
+        mapZipEquityRow(zipEquityRes.rows[0]),
+        mapMarketIndexRow(marketRes.rows[0]),
         sales,
         nearbyComps,
         prc,
