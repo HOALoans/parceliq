@@ -153,7 +153,7 @@ export function buildParcelNarrative(opts: {
     title: "What sales evidence suggests",
     paragraphs: marketParagraphs.filter(Boolean),
     bullets: me.estimates.map((e) =>
-      `${e.selected ? "→ " : "  "}${e.label}: ${money(e.value)} (${e.confidence} confidence)${e.selected ? " — used for headline" : ""}`,
+      `${e.selected ? "→ " : "  "}${e.label}: ${money(e.value)} (${e.confidence} confidence)${e.selected ? " — selected method" : ""}`,
     ),
   });
 
@@ -186,7 +186,10 @@ export function buildParcelNarrative(opts: {
       bullets: [
         `Difference: ${money(v.gap_dollars)} (${pct(v.variance_pct, true)}).`,
         "Flagged when the gap exceeds ±15%. This compares county value to sales-based evidence — not to the reappraisal percentage alone.",
-      ],
+        v.variance_pct != null
+          ? `Alignment score: ${Math.max(0, Math.round(100 - Math.min(Math.abs(v.variance_pct) * 2.5, 100)))}/100 — how closely the county assessment matches the market estimate (100 = same; lower = larger gap).`
+          : undefined,
+      ].filter((b): b is string => !!b),
     });
   }
 

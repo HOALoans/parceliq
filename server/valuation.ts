@@ -116,5 +116,12 @@ export function modelBreakdown(attrs: ParcelAttrs, mv: number) {
 }
 
 export function equityScore(variancePct: number): number {
+  /** 100 = county assessment matches market estimate; drops as |variance| grows (2.5 pts per 1% gap). */
   return Math.max(0, Math.round(100 - Math.min(Math.abs(variancePct) * 2.5, 100)));
+}
+
+export function equityScoreLabel(score: number): string {
+  if (score >= 80) return "Close to market estimate";
+  if (score >= 60) return "Moderate gap vs market";
+  return "Large gap vs market";
 }

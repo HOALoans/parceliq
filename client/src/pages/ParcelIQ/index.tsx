@@ -218,7 +218,7 @@ function MarketEstimatePriorityPanel({
                   <span className={`text-sm font-semibold ${selected ? "text-white" : "text-slate-900"}`}>{title}</span>
                   {selected && (
                     <span className="text-[10px] uppercase tracking-wide bg-amber-400 text-slate-900 px-2 py-0.5 rounded font-bold">
-                      Used for headline
+                      Selected method
                     </span>
                   )}
                   {line && !selected && (
@@ -299,7 +299,7 @@ function ValuationTimeline({ steps }: { steps: Array<Record<string, any>> }) {
       )}
       {contextSteps.length > 0 && (
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-3">Equity context (not used for headline)</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-3">Equity context (not the selected market method)</p>
           <div className="relative">{contextSteps.map((s) => renderStep(s, "bg-amber-200", "border-amber-500"))}</div>
         </div>
       )}
@@ -436,13 +436,23 @@ function VarianceBadge({ pct }: { pct: number | null }) {
   return <Badge className="bg-green-100 text-green-800 border-green-200">{pct > 0 ? "+" : ""}{pct}%</Badge>;
 }
 
+function alignmentScoreHint(score: number | null): string {
+  if (score == null) return "";
+  if (score >= 80) return "County assessment is close to our market estimate (within ~8%).";
+  if (score >= 60) return "County assessment differs moderately from our market estimate (~9–16% gap).";
+  return `County assessment differs substantially from our market estimate (score ${score}/100 — larger gaps score lower).`;
+}
+
 function ScorePill({ score }: { score: number | null }) {
   if (score == null) return null;
   const color = score >= 80 ? "bg-green-100 text-green-800"
     : score >= 60 ? "bg-amber-100 text-amber-800"
     : "bg-red-100 text-red-800";
   return (
-    <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold border ${color}`}>
+    <span
+      className={`inline-flex items-center justify-center w-9 h-9 rounded-full text-xs font-bold border ${color}`}
+      title={alignmentScoreHint(score)}
+    >
       {score}
     </span>
   );
@@ -1192,7 +1202,8 @@ function ExplorerSearchView() {
                 <TableHead>PIN</TableHead><TableHead>Address</TableHead>
                 <TableHead>Owner</TableHead><TableHead>Acres</TableHead>
                 <TableHead>County Assessed</TableHead><TableHead>Model Value</TableHead>
-                <TableHead>Variance</TableHead><TableHead>Score</TableHead>
+                <TableHead>Variance</TableHead>
+                <TableHead title="How closely county assessment aligns with market estimate (100 = match)">Alignment</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
