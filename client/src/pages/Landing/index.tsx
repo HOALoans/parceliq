@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { Link } from "wouter";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -49,7 +51,38 @@ const COUNTIES = [
   },
 ];
 
+function prefetchBuncombeData(utils: ReturnType<typeof trpc.useUtils>) {
+  void utils.parceliq.assessmentRatios.prefetch();
+}
+
+function BuncombeLink({
+  href = "/buncombe",
+  className,
+  children,
+}: {
+  href?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const utils = trpc.useUtils();
+  return (
+    <Link
+      href={href}
+      className={className}
+      onMouseEnter={() => prefetchBuncombeData(utils)}
+    >
+      {children}
+    </Link>
+  );
+}
+
 export default function LandingPage() {
+  const utils = trpc.useUtils();
+
+  useEffect(() => {
+    prefetchBuncombeData(utils);
+  }, [utils]);
+
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col">
       {/* Nav */}
@@ -62,11 +95,11 @@ export default function LandingPage() {
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">Property assessment intelligence</p>
           </div>
-          <Link href="/buncombe">
+          <BuncombeLink>
             <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold">
               Buncombe County <ArrowRight className="w-4 h-4 ml-1" />
             </Button>
-          </Link>
+          </BuncombeLink>
         </div>
       </header>
 
@@ -86,11 +119,11 @@ export default function LandingPage() {
             the market, and equity fairness diverge.
           </p>
           <div className="flex flex-wrap justify-center gap-3 pt-2">
-            <Link href="/buncombe">
+            <BuncombeLink>
               <Button size="lg" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold">
                 Explore Buncombe County
               </Button>
-            </Link>
+            </BuncombeLink>
           </div>
         </div>
       </section>
@@ -248,11 +281,11 @@ export default function LandingPage() {
                   ))}
                 </div>
                 {c.status === "live" && (
-                  <Link href="/buncombe">
+                  <BuncombeLink>
                     <Button className="w-full bg-slate-900 hover:bg-slate-800">
                       Open dashboard <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
-                  </Link>
+                  </BuncombeLink>
                 )}
               </CardContent>
             </Card>
@@ -280,9 +313,9 @@ export default function LandingPage() {
       <footer className="bg-slate-900 text-slate-400 px-6 py-8 text-center text-xs">
         <p>
           Parcelogik.com · Property assessment intelligence · Not a licensed appraisal ·{" "}
-          <Link href="/buncombe" className="text-amber-400 hover:underline">
+          <BuncombeLink className="text-amber-400 hover:underline">
             Buncombe County
-          </Link>
+          </BuncombeLink>
         </p>
       </footer>
     </div>

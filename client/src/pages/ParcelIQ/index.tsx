@@ -37,18 +37,6 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 
-const COUNTY_ASSESSMENT_RATIO = 0.725;
-
-const ASSESSMENT_RATIO_BY_ZIP = [
-  { zip: "28801", area: "Downtown Asheville", ratio: 0.749 },
-  { zip: "28803", area: "Biltmore/South",     ratio: 0.719 },
-  { zip: "28804", area: "North Asheville",    ratio: 0.723 },
-  { zip: "28805", area: "East Asheville",     ratio: 0.746 },
-  { zip: "28806", area: "West Asheville",     ratio: 0.721 },
-  { zip: "28711", area: "Black Mountain",     ratio: 0.727 },
-] as const;
-
-
 // ── nav tabs ─────────────────────────────────────────────────────────
 type Tab = "dashboard" | "explorer" | "revenue" | "equity" | "overrides" | "audit";
 
@@ -133,8 +121,9 @@ function marketEstimateExplainer(v: Record<string, any> | undefined): string {
 
   if (me.method === "comparable_sales") {
     return (
-      `Our market estimate (${fmt(me.value)}) is the median of recent qualified sales of similar properties in the same ZIP` +
-      ` (similar price range to this assessment). This is the sales-comparison approach appraisers use — not an extrapolation from county under-assessment.${range}`
+      `Our market estimate (${fmt(me.value)}) is the median of qualified sales of similar properties in the same ZIP` +
+      ` — matched by finished square footage, property type, and year built when county data is available.` +
+      ` This is the sales-comparison approach appraisers use — not an extrapolation from county under-assessment.${range}`
     );
   }
 
@@ -162,7 +151,7 @@ function equityExtrapolationExplainer(v: Record<string, any> | undefined): strin
 
 const MARKET_METHOD_PRIORITY = [
   { priority: 1, method: "own_sale", title: "This parcel's qualified sale", hint: "Strongest — a verified sale on this PIN" },
-  { priority: 2, method: "comparable_sales", title: "Nearby comparable sales", hint: "Median of qualified sales in the same ZIP" },
+  { priority: 2, method: "comparable_sales", title: "Nearby comparable sales", hint: "Median of sales matched by sq ft, type, and age" },
   { priority: 3, method: "gradient_model", title: "Property characteristics", hint: "Fallback from lot, location, and class" },
 ] as const;
 
@@ -557,10 +546,10 @@ function ZipLink({
 // ════════════════════════════════════════════════════════════════════════
 function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
   const { data, isLoading, refetch } = trpc.parceliq.searchParcels.useQuery({ limit: 5 });
-  const { data: ratios } = trpc.parceliq.assessmentRatios.useQuery();
+  const { data: ratios, isLoading: ratiosLoading } = trpc.parceliq.assessmentRatios.useQuery();
 
-  const countyPct = ratios?.countyMedianPct ?? COUNTY_ASSESSMENT_RATIO * 100;
-  const zipRatios = ratios?.zipCodes ?? ASSESSMENT_RATIO_BY_ZIP;
+  const zipRatios = ratios?.zipCodes ?? [];
+  const countyPct = ratios?.countyMedianPct;
   const chartData = zipRatios.map((z) => ({
     name: z.zip,
     ratio: Math.round(z.ratio * 1000) / 10,
@@ -574,7 +563,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
     : 80;
 
   const stats = [
-    { label: "Assessment Ratio",   value: `${countyPct.toFixed(1)}%`, sub: "Median assessment ÷ sale (equity study)", color: "border-t-amber-500" },
+    { label: "Assessment Ratio",   value: countyPct != null ? `${countyPct.toFixed(1)}%` : "—", sub: "Median assessment ÷ sale (equity study)", color: "border-t-amber-500" },
     { label: "Total Parcels",      value: "112,847",  sub: "Buncombe County",               color: "border-t-slate-500" },
     { label: "Total Assessed",     value: "$24.3B",   sub: "Model-derived",                  color: "border-t-green-500" },
     { label: "Equity Flags",       value: "4,219",    sub: "Properties ±15% off",            color: "border-t-red-500" },
@@ -591,69 +580,84 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-4 pb-4">
-          <p className="text-sm text-amber-950 leading-relaxed">
-            Buncombe County's median assessment-to-sale ratio is{" "}
-            <strong className="text-lg">{countyPct.toFixed(1)}%</strong>{" "}
-            across qualified deed sales since 2020. This measures how assessments compare to
-            actual sale prices <em>by ZIP</em> — useful for uniformity and equity analysis, not as a
-            per-parcel market appraisal.
-          </p>
+          {ratiosLoading ? (
+            <div className="space-y-4">
+              <p className="text-sm text-amber-950/70">Loading assessment ratios from deed sales…</p>
+              <div className="h-80 rounded-lg border bg-white animate-pulse" />
+            </div>
+          ) : zipRatios.length === 0 ? (
+            <p className="text-sm text-amber-950">
+              No ZIP equity data yet. Run{" "}
+              <code className="font-mono text-xs">npm run sync:rod</code> to populate from deed sales.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-amber-950 leading-relaxed">
+                Buncombe County&apos;s median assessment-to-sale ratio is{" "}
+                <strong className="text-lg">{countyPct!.toFixed(1)}%</strong>{" "}
+                across qualified deed sales since 2020. This measures how assessments compare to
+                actual sale prices <em>by ZIP</em> — useful for uniformity and equity analysis, not as a
+                per-parcel market appraisal.
+              </p>
 
-          <div className="h-80 rounded-lg border bg-white p-2 pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={chartData}
-                margin={{ top: 4, right: 8, left: 0, bottom: 48 }}
-              >
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10 }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={56}
-                  interval={0}
-                />
-                <YAxis
-                  domain={[yMin, yMax]}
-                  tick={{ fontSize: 11 }}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <Tooltip formatter={(v: number) => [`${v}%`, "Median Ratio"]} />
-                <Bar dataKey="ratio" fill="#b45309" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+              <div className="h-80 rounded-lg border bg-white p-2 pt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartData}
+                    margin={{ top: 4, right: 8, left: 0, bottom: 48 }}
+                  >
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 10 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={56}
+                      interval={0}
+                    />
+                    <YAxis
+                      domain={[yMin, yMax]}
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v) => `${v}%`}
+                    />
+                    <Tooltip formatter={(v: number) => [`${v}%`, "Median Ratio"]} />
+                    <Bar dataKey="ratio" fill="#b45309" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
 
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-white/80 hover:bg-white/80">
-                <TableHead>ZIP</TableHead>
-                <TableHead>Area</TableHead>
-                <TableHead className="text-right">Median Ratio</TableHead>
-                <TableHead>vs. sales sample</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {zipRatios.map((z) => {
-                const status = zipEquityRatioStatus(z.ratio);
-                return (
-                <TableRow key={z.zip} className="bg-white/60">
-                  <TableCell>
-                    <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-xs" />
-                  </TableCell>
-                  <TableCell className="text-sm">{z.area}</TableCell>
-                  <TableCell className="text-right font-mono text-sm font-medium">
-                    {z.ratio.toFixed(3)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={status.badgeClass}>
-                      {status.label}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              );})}
-            </TableBody>
-          </Table>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-white/80 hover:bg-white/80">
+                    <TableHead>ZIP</TableHead>
+                    <TableHead>Area</TableHead>
+                    <TableHead className="text-right">Median Ratio</TableHead>
+                    <TableHead>vs. sales sample</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {zipRatios.map((z) => {
+                    const status = zipEquityRatioStatus(z.ratio);
+                    return (
+                      <TableRow key={z.zip} className="bg-white/60">
+                        <TableCell>
+                          <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-xs" />
+                        </TableCell>
+                        <TableCell className="text-sm">{z.area}</TableCell>
+                        <TableCell className="text-right font-mono text-sm font-medium">
+                          {z.ratio.toFixed(3)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={status.badgeClass}>
+                            {status.label}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1277,15 +1281,31 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
 
       {v?.nearby_comps?.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Nearby comparable sales · same ZIP
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Nearby comparable sales · same ZIP
+            </p>
+            {v?.comp_matching?.summary && (
+              <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                {v.comp_matching.summary}
+              </span>
+            )}
+          </div>
+          {v?.comp_matching?.filters_applied?.length > 0 && (
+            <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
+              {v.comp_matching.filters_applied.map((f: string) => (
+                <li key={f}>{f}</li>
+              ))}
+            </ul>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Address</TableHead>
                 <TableHead>Sale Date</TableHead>
                 <TableHead className="text-right">Sale Price</TableHead>
+                <TableHead className="text-right">Sq Ft</TableHead>
+                <TableHead className="text-right">Year</TableHead>
                 <TableHead className="text-right">Assessed</TableHead>
               </TableRow>
             </TableHeader>
@@ -1295,6 +1315,8 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
                   <TableCell className="text-sm max-w-[200px] truncate">{comp.address ?? comp.pin}</TableCell>
                   <TableCell className="text-sm">{fmtDate(comp.sell_date)}</TableCell>
                   <TableCell className="text-right font-mono text-sm">{fmt(comp.selling_price)}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{comp.sqft != null ? comp.sqft.toLocaleString() : "—"}</TableCell>
+                  <TableCell className="text-right font-mono text-sm">{comp.year_built ?? "—"}</TableCell>
                   <TableCell className="text-right font-mono text-sm">{fmt(comp.assessed)}</TableCell>
                 </TableRow>
               ))}

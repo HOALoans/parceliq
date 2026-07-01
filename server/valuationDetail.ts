@@ -14,6 +14,14 @@ export type NearbyComp = {
   sell_date: string | null;
   selling_price: number;
   assessed: number | null;
+  sqft?: number | null;
+  year_built?: number | null;
+};
+
+export type CompMatching = {
+  level: "strict" | "relaxed" | "zip_wide";
+  summary: string;
+  filters_applied: string[];
 };
 
 export type ZipEquityRow = {
@@ -95,6 +103,7 @@ export type ValuationDetail = {
   zillow: MarketIndexRow | null;
   comparable_sales: ComparableSale[];
   nearby_comps: NearbyComp[];
+  comp_matching: CompMatching | null;
   model_breakdown: ReturnType<typeof modelBreakdown> | null;
   prc: PrcRecord | null;
 };
@@ -135,6 +144,7 @@ export function buildValuationDetail(
   sales: ComparableSale[],
   nearbyComps: NearbyComp[],
   prc: PrcRecord | null = null,
+  compMatching: CompMatching | null = null,
 ): ValuationDetail {
   const taxRollAssessed = Number(row.total_value ?? 0);
   const prcAssessed = prc?.total_appraised && prc.total_appraised > 0 ? prc.total_appraised : null;
@@ -189,12 +199,15 @@ export function buildValuationDetail(
   }
 
   if (compEstimate != null) {
+    const compDetail = compMatching?.summary
+      ? `${compMatching.summary} Median of ${compPrices.length} qualified sale${compPrices.length !== 1 ? "s" : ""} (Register of Deeds, since 2020).`
+      : `Median of ${compPrices.length} qualified sale${compPrices.length !== 1 ? "s" : ""} in the same ZIP with prices in a similar range to this assessment (Register of Deeds, since 2020).`;
     estimateLines.push({
       method: "comparable_sales",
       label: `Nearby sales in ZIP ${zipEquity?.zip_code ?? attrs.ZIP ?? "—"}`,
       value: compEstimate,
       confidence: compPrices.length >= 5 ? "medium" : compPrices.length >= 3 ? "medium" : "low",
-      detail: `Median of ${compPrices.length} qualified sale${compPrices.length !== 1 ? "s" : ""} in the same ZIP with prices in a similar range to this assessment (Register of Deeds, since 2020).`,
+      detail: compDetail,
       priority: 2,
       selected: false,
     });
@@ -431,7 +444,7 @@ export function buildValuationDetail(
       range_high: rangeHigh,
       estimates: estimateLines,
       selection_rule:
-        "We do not blend or weight these values. The market estimate uses the first method with enough evidence: (1) this parcel's qualified sale, (2) median of nearby comps (3+ sales preferred), (3) characteristics model as fallback. Other figures shown are context only.",
+        "We do not blend or weight these values. The market estimate uses the first method with enough evidence: (1) this parcel's qualified sale, (2) median of nearby comps matched by size, property type, and age when data allows (3+ sales preferred), (3) characteristics model as fallback. Other figures shown are context only.",
     },
     equity_extrapolation: {
       value: deedExtrapolation,
@@ -454,6 +467,7 @@ export function buildValuationDetail(
     zillow: marketIndex,
     comparable_sales: sales,
     nearby_comps: nearbyComps,
+    comp_matching: compMatching,
     model_breakdown: marketValue ? modelBreakdown(attrs, marketValue) : null,
     prc,
   };
