@@ -15,6 +15,8 @@ import { fetchReappraisalTaxEquity } from "./reappraisalTaxEquity.js";
 import { buildParcelNarrative } from "./parcelNarrative.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
 import { EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
+import { resolveSitusZipForParcel } from "./situsZip.js";
+import type { SubjectProfile } from "./comparableSales.js";
 
 function toDateLabel(value: unknown): string | null {
   if (value == null) return null;
@@ -61,26 +63,41 @@ function mapMarketIndexRow(row: Record<string, unknown> | undefined): MarketInde
   } as MarketIndexRow;
 }
 
+/** Subject profile + situs ZIP for comp search (not owner mailing / PO Box ZIP). */
+async function buildCompSubject(
+  row: Record<string, unknown>,
+  prc: Awaited<ReturnType<typeof loadPrcForParcel>>,
+  yoyZip?: string | null,
+): Promise<{ subject: SubjectProfile; situsZip: string }> {
+  const situsZip = await resolveSitusZipForParcel(pool, row, prc, yoyZip);
+  const subject = buildSubjectProfile(row, prc);
+  if (situsZip) subject.zip = situsZip;
+  return { subject, situsZip: situsZip || subject.zip };
+}
+
 /** Comp-based fair value — same logic as getParcel detail view. */
 async function computeFairMarketValue(
   row: Record<string, unknown>,
   enriched: ReturnType<typeof enrichRow>,
 ) {
-  const prc = await loadPrcForParcel(pool, String(row.pin), row).catch(() => null);
+  const pin = String(row.pin);
+  const [prc, reappraisalYoY] = await Promise.all([
+    loadPrcForParcel(pool, pin, row).catch(() => null),
+    fetchReappraisalYoY(pool, pin).catch(() => null),
+  ]);
+  const { subject, situsZip } = await buildCompSubject(row, prc, reappraisalYoY?.zipcode);
   const attrs: ParcelAttrs = {
     CALCACREAGE: enriched.CALCACREAGE,
     LANDVALUE: null,
     TOTALVALUE: enriched.TOTALVALUE,
     CLASSCD: "R",
-    ZIP: enriched.POSTAL_CODE,
+    ZIP: situsZip,
     SITEADDRESS: enriched.SITEADDRESS,
   };
-  const zip = enriched.POSTAL_CODE;
-  const subject = buildSubjectProfile(row, prc);
   const [zipEquityRes, marketRes, salesRes, compMatch] = await Promise.all([
     pool.query(
       "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
-      [zip]
+      [situsZip]
     ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
     pool.query(
       "SELECT metro_name, as_of_date, zhvi_current, zhvi_base, zhvi_base_date, median_sale_current, median_sale_base, appreciation_factor, source FROM parceliq_market_index ORDER BY created_at DESC LIMIT 1"
@@ -268,20 +285,20 @@ export const parceliqRouter = router({
       const row = rows[0];
 
       const prc = await loadPrcForParcel(pool, String(row.pin), row).catch(() => null);
+      const reappraisalYoY = await fetchReappraisalYoY(pool, String(row.pin));
 
       const enriched = enrichRow(row);
+      const { subject, situsZip } = await buildCompSubject(row, prc, reappraisalYoY?.zipcode);
       const attrs: ParcelAttrs = {
         CALCACREAGE: enriched.CALCACREAGE, LANDVALUE: null,
         TOTALVALUE: enriched.TOTALVALUE, CLASSCD: "R",
-        ZIP: enriched.POSTAL_CODE, SITEADDRESS: enriched.SITEADDRESS,
+        ZIP: situsZip, SITEADDRESS: enriched.SITEADDRESS,
       };
 
-      const zip = enriched.POSTAL_CODE;
-      const subject = buildSubjectProfile(row, prc);
-      const [zipEquityRes, marketRes, salesRes, compMatch, reappraisalYoY, rodSyncRes] = await Promise.all([
+      const [zipEquityRes, marketRes, salesRes, compMatch, rodSyncRes] = await Promise.all([
         pool.query(
           "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
-          [zip]
+          [situsZip]
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
         pool.query(
           "SELECT metro_name, as_of_date, zhvi_current, zhvi_base, zhvi_base_date, median_sale_current, median_sale_base, appreciation_factor, source FROM parceliq_market_index ORDER BY created_at DESC LIMIT 1"
@@ -293,7 +310,6 @@ export const parceliqRouter = router({
           [String(row.pin)]
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
         fetchComparableSales(pool, subject),
-        fetchReappraisalYoY(pool, String(row.pin)),
         pool.query(
           `SELECT finished_at FROM parceliq_ingest_runs
            WHERE job_name='register_of_deeds' AND status='success'

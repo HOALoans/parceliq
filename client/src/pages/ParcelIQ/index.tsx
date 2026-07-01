@@ -392,10 +392,10 @@ function UniformityContextPanel({
   }
 
   return (
-    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/30">
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/30 hover:border-slate-400 transition-colors">
       <button
         type="button"
-        className="w-full flex items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50/60 rounded-lg transition-colors"
+        className="group w-full flex items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50/80 rounded-lg transition-colors cursor-pointer"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
@@ -406,12 +406,11 @@ function UniformityContextPanel({
               ? "Equity-study math for policy and uniformity checks — not Parcelogik Fair Value."
               : `Optional · ${preview.join(" · ")}`}
           </p>
+          <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-slate-600 group-hover:text-slate-800 underline-offset-2 group-hover:underline">
+            {open ? "Hide details" : "Show details"}
+            {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </span>
         </div>
-        {open ? (
-          <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
-        ) : (
-          <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
-        )}
       </button>
       {open && (
         <div className="px-4 pb-4 space-y-3 border-t border-dashed border-slate-200 pt-3 text-xs text-muted-foreground leading-relaxed">
@@ -515,15 +514,15 @@ function SalePriceEstimateSection({
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-4">
-        <div className="flex flex-wrap items-baseline gap-4 rounded-lg border bg-white px-4 py-3">
+        <div className="flex flex-wrap items-baseline gap-4 rounded-lg border-2 border-slate-800 bg-slate-900 px-4 py-3 shadow-md">
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{PARCELOGIK_FAIR_VALUE}</p>
-            <p className="text-2xl font-serif font-semibold text-slate-900">{fmt(fairValue)}</p>
+            <p className="text-[10px] uppercase tracking-wide text-amber-300">{PARCELOGIK_FAIR_VALUE}</p>
+            <p className="text-2xl font-serif font-semibold text-amber-300">{fmt(fairValue)}</p>
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-slate-300">
             <p>{marketEst?.method_label ?? "From nearby sales"}</p>
             {marketEst?.confidence && (
-              <p className="text-xs mt-0.5">{marketEst.confidence} confidence</p>
+              <p className="text-xs mt-0.5 text-slate-400">{marketEst.confidence} confidence</p>
             )}
             {marketEst?.range_low != null && marketEst?.range_high != null && fairValue != null && (
               <p className="text-xs mt-0.5">
@@ -533,14 +532,14 @@ function SalePriceEstimateSection({
           </div>
           {varPct != null && assessed != null && fairValue != null && (
             <div className="ml-auto text-right">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">vs county value</p>
+              <p className="text-[10px] uppercase tracking-wide text-slate-400">vs county value</p>
               <p className={`text-lg font-serif font-semibold ${
-                Math.abs(varPct) > 15 ? "text-amber-800" : "text-green-700"
+                Math.abs(varPct) > 15 ? "text-amber-300" : "text-green-400"
               }`}>
                 {varPct > 0 ? "+" : ""}{varPct}%
               </p>
               {v?.gap_dollars != null && (
-                <p className="text-xs text-muted-foreground">{fmt(v.gap_dollars)} difference</p>
+                <p className="text-xs text-slate-400">{fmt(v.gap_dollars)} difference</p>
               )}
             </div>
           )}
@@ -1722,28 +1721,33 @@ function NarrativeTopicCard({ section }: { section: Record<string, any> }) {
 
   return (
     <div
-      className={`rounded-lg border border-amber-200/70 bg-white shadow-sm overflow-hidden h-fit ${
+      className={`rounded-lg border border-amber-200 bg-white shadow-sm overflow-hidden h-fit transition-shadow hover:shadow-md hover:border-amber-300 ${
         wide ? "sm:col-span-2" : ""
       }`}
     >
       <button
         type="button"
-        className="w-full text-left px-4 py-3 hover:bg-amber-50/40 transition-colors"
+        className="group w-full text-left px-4 py-3.5 hover:bg-amber-50/50 transition-colors cursor-pointer"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900">{section.title}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-slate-900 group-hover:text-amber-950">
+              {section.title}
+            </p>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">
               {summary}
             </p>
+            <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-amber-700 group-hover:text-amber-800 underline-offset-2 group-hover:underline">
+              {open ? "Hide details" : "Read more"}
+              {open ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </span>
           </div>
-          {open ? (
-            <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
-          ) : (
-            <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
-          )}
         </div>
       </button>
       {open && (
@@ -1801,8 +1805,9 @@ function ParcelNarrativePanel({
         )}
       </CardHeader>
       <CardContent className="px-4 pb-4">
-        <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-3">
-          Tap a topic for details
+        <p className="text-xs text-amber-900/80 mb-3 flex items-center gap-1.5">
+          <Info className="w-3.5 h-3.5 shrink-0" />
+          Click any topic below for the full explanation.
         </p>
         <div className="grid sm:grid-cols-2 gap-3">
           {sections.map((section) => (
@@ -1945,11 +1950,11 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
             <p className="text-xs text-blue-900 font-medium uppercase tracking-wide">County tax value</p>
             <p className="text-2xl font-serif font-semibold text-blue-950 mt-1">{fmt(assessed)}</p>
           </div>
-          <div className="rounded-lg border-2 border-slate-300 bg-white px-4 py-3">
-            <p className="text-xs text-slate-700 font-medium uppercase tracking-wide">{PARCELOGIK_FAIR_VALUE}</p>
-            <p className="text-2xl font-serif font-semibold text-slate-900 mt-1">{fmt(fairValue)}</p>
+          <div className="rounded-lg border-2 border-slate-800 bg-slate-900 px-4 py-3 shadow-md">
+            <p className="text-xs text-amber-300 font-medium uppercase tracking-wide">{PARCELOGIK_FAIR_VALUE}</p>
+            <p className="text-2xl font-serif font-semibold text-amber-300 mt-1">{fmt(fairValue)}</p>
             {marketEst?.method_label && (
-              <p className="text-[10px] text-muted-foreground mt-1">{marketEst.method_label}</p>
+              <p className="text-[10px] text-slate-400 mt-1">{marketEst.method_label}</p>
             )}
           </div>
         </div>
