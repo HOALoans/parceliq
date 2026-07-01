@@ -51,12 +51,20 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 
 // ── helpers ───────────────────────────────────────────────────────────
 const fmt = (n: number | null | undefined) =>
-  n == null ? "—" : `$${n.toLocaleString()}`;
+  n == null ? "—" : `$${n.toLocaleString("en-US")}`;
 
 const fmtB = (n: number) =>
-  n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B`
-  : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M`
-  : `$${Math.round(n).toLocaleString()}`;
+  n >= 1e9 ? `$${(n / 1e9).toLocaleString("en-US", { maximumFractionDigits: 1 })}B`
+  : n >= 1e6 ? `$${(n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 1 })}M`
+  : `$${Math.round(n).toLocaleString("en-US")}`;
+
+const fmtNum = (n: number | null | undefined) =>
+  n == null ? "—" : n.toLocaleString("en-US");
+
+function parseAmountInput(raw: string): number {
+  const n = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
 
 const fmtDate = (d: unknown) => {
   if (d == null || d === "") return "—";
@@ -1702,7 +1710,7 @@ function RevenueTab() {
 
   const r = calc.data;
 
-  const chartData = r ? Object.entries(r.classBrakedown).map(([cls, v]) => ({
+  const chartData = r ? Object.entries(r.classBreakdown).map(([cls, v]) => ({
     name: cls, revenue: Math.round(v.estimatedRevenue / 1e6),
   })) : [];
 
@@ -1724,17 +1732,18 @@ function RevenueTab() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
-              { label: "Target Revenue ($)", val: target, set: setTarget },
-              { label: "Total Assessed Value ($)", val: totalAV, set: setTotalAV },
-              { label: "Exemptions ($)", val: exemptions, set: setExemptions },
-              { label: "Collection Rate (0-1)", val: rate, set: setRate },
-            ].map(({ label, val, set }) => (
+              { label: "Target Revenue ($)", val: target, set: setTarget, currency: true },
+              { label: "Total Assessed Value ($)", val: totalAV, set: setTotalAV, currency: true },
+              { label: "Exemptions ($)", val: exemptions, set: setExemptions, currency: true },
+              { label: "Collection Rate (0-1)", val: rate, set: setRate, currency: false },
+            ].map(({ label, val, set, currency }) => (
               <div key={label}>
                 <Label className="text-xs text-slate-400 uppercase tracking-wide">{label}</Label>
                 <Input
-                  type="number"
-                  value={val}
-                  onChange={(e) => set(Number(e.target.value))}
+                  type={currency ? "text" : "number"}
+                  inputMode={currency ? "numeric" : "decimal"}
+                  value={currency ? fmtNum(val) : val}
+                  onChange={(e) => set(currency ? parseAmountInput(e.target.value) : Number(e.target.value))}
                   className="mt-1 bg-slate-800 border-slate-700 text-white"
                 />
               </div>
@@ -1750,14 +1759,16 @@ function RevenueTab() {
               <Separator className="border-slate-700" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                  { label: "Taxable Value",         val: fmtB(r.taxableValue) },
-                  { label: "Millage Rate",           val: `${r.millageRateCents.toFixed(4)}¢` },
-                  { label: "Avg Tax Bill",           val: fmt(r.avgTaxBillMedianHome) },
-                  { label: "Projected Collection",   val: fmtB(r.projectedCollection) },
+                  { label: "Taxable Value", val: fmt(r.taxableValue) },
+                  { label: "Millage Rate", val: `${r.millageRateCents.toLocaleString("en-US", { minimumFractionDigits: 4, maximumFractionDigits: 4 })}¢` },
+                  { label: "Avg Tax Bill", val: fmt(r.avgTaxBillMedianHome) },
+                  { label: "Projected Collection", val: fmt(r.projectedCollection) },
+                  { label: "Target Revenue", val: fmt(r.targetRevenue) },
+                  { label: "Gap vs Target", val: fmt(r.gap) },
                 ].map(({ label, val }) => (
                   <div key={label}>
                     <div className="text-xs text-slate-400 uppercase tracking-wide">{label}</div>
-                    <div className="text-2xl font-serif text-amber-300 mt-1">{val}</div>
+                    <div className="text-xl sm:text-2xl font-serif text-amber-300 mt-1">{val}</div>
                   </div>
                 ))}
               </div>
@@ -1776,8 +1787,8 @@ function RevenueTab() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v}M`} />
-                  <Tooltip formatter={(v: number) => [`$${v}M`, "Est. Revenue"]} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${Number(v).toLocaleString("en-US")}M`} />
+                  <Tooltip formatter={(v: number) => [fmt(v * 1_000_000), "Est. Revenue"]} />
                   <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
                     {chartData.map((_, i) => (
                       <Cell key={i} fill={["#1e3a5f","#c9a84c","#1a6b4a","#b8640a"][i % 4]} />
@@ -1795,13 +1806,13 @@ function RevenueTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Object.entries(r.classBrakedown).map(([cls, v]) => (
+                {Object.entries(r.classBreakdown).map(([cls, v]) => (
                   <TableRow key={cls}>
                     <TableCell><Badge variant="outline">{cls}</Badge></TableCell>
-                    <TableCell>{v.parcels.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono">{fmtB(v.assessedValue)}</TableCell>
-                    <TableCell className="font-mono">{fmtB(v.estimatedRevenue)}</TableCell>
-                    <TableCell>{v.sharePct.toFixed(0)}%</TableCell>
+                    <TableCell>{fmtNum(v.parcels)}</TableCell>
+                    <TableCell className="font-mono">{fmt(v.assessedValue)}</TableCell>
+                    <TableCell className="font-mono">{fmt(v.estimatedRevenue)}</TableCell>
+                    <TableCell>{v.sharePct.toLocaleString("en-US", { maximumFractionDigits: 0 })}%</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
