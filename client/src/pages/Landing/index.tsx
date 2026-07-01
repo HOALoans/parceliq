@@ -154,13 +154,6 @@ export default function LandingPage() {
                 Choose your county
               </Button>
             </a>
-            {liveCounties.length === 1 && (
-              <CountyLink href={liveCounties[0].href} slug={liveCounties[0].slug}>
-                <Button size="lg" variant="outline" className="border-slate-500 text-white hover:bg-slate-800">
-                  Open {liveCounties[0].name}
-                </Button>
-              </CountyLink>
-            )}
           </div>
         </div>
       </section>
