@@ -33,7 +33,7 @@ import {
   Building2, Search, Target, Scale,
   ClipboardList, AlertTriangle, CheckCircle2,
   TrendingUp, TrendingDown, RefreshCw, Plus, Info, ExternalLink,
-  ArrowLeft, BookOpen,
+  ArrowLeft, BookOpen, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -292,9 +292,9 @@ function MarketEstimatePriorityPanel({
   return (
     <Card className="border-slate-300 bg-gradient-to-br from-slate-50 to-white">
       <CardHeader className="py-3 px-4 pb-2">
-        <CardTitle className="text-sm font-semibold">How the market estimate is chosen</CardTitle>
+        <CardTitle className="text-sm font-semibold">How we picked this estimate</CardTitle>
         <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-          {marketEst?.selection_rule ?? marketEstimateExplainer({ market_estimate: marketEst, fair_market_value: fairValue })}
+          We use the first method below with enough evidence — not an average of all methods.
         </p>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-2">
@@ -347,9 +347,225 @@ function MarketEstimatePriorityPanel({
         })}
         {marketEst?.range_low != null && marketEst?.range_high != null && (
           <p className="text-xs text-muted-foreground pt-2 border-t">
-            Sensitivity range across available methods: {fmt(marketEst.range_low)}–{fmt(marketEst.range_high)}
-            {" "}(not a weighted blend).
+            Range across methods that applied: {fmt(marketEst.range_low)}–{fmt(marketEst.range_high)}
           </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Sale estimate + comps — separate from the value-review story; explained in plain language. */
+function SalePriceEstimateSection({
+  v,
+  assessed,
+  fairValue,
+  marketEst,
+  varPct,
+  verdict,
+  verdictStyles,
+  equityExtrap,
+}: {
+  v: Record<string, any> | undefined;
+  assessed: number | null | undefined;
+  fairValue: number | null | undefined;
+  marketEst: Record<string, any> | undefined;
+  varPct: number | null | undefined;
+  verdict: string | undefined;
+  verdictStyles: string;
+  equityExtrap: number | undefined;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasSaleContent =
+    fairValue != null ||
+    (v?.comparable_sales?.length ?? 0) > 0 ||
+    (v?.nearby_comps?.length ?? 0) > 0;
+
+  if (!hasSaleContent) {
+    return (
+      <Card className="border border-dashed border-slate-200 bg-slate-50/50">
+        <CardContent className="py-4 px-4 text-sm text-muted-foreground leading-relaxed">
+          <p className="font-medium text-slate-800">Sale price estimate</p>
+          <p className="mt-1">
+            We don&apos;t have enough recent sales of similar homes nearby to suggest what this
+            property might sell for today. The value review above is still the assessor&apos;s
+            official tax value.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border border-slate-200 bg-slate-50/30">
+      <CardHeader className="py-3 px-4 pb-2">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="space-y-2 max-w-2xl">
+            <CardTitle className="text-sm font-semibold text-slate-800">
+              Sale price estimate — a different question
+            </CardTitle>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              The <strong>value review above</strong> is what the assessor uses for your tax bill.
+              This number asks something else: <em>based on real home sales nearby, what might a
+              buyer pay today?</em> It does not change your assessment — it helps you understand
+              how county value compares to the market.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 text-xs"
+            onClick={() => setExpanded((e) => !e)}
+          >
+            {expanded ? (
+              <>Less detail <ChevronUp className="w-3 h-3 ml-1" /></>
+            ) : (
+              <>How we calculated this <ChevronDown className="w-3 h-3 ml-1" /></>
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-4">
+        <div className="flex flex-wrap items-baseline gap-4 rounded-lg border bg-white px-4 py-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Estimate</p>
+            <p className="text-2xl font-serif font-semibold text-slate-900">{fmt(fairValue)}</p>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            <p>{marketEst?.method_label ?? "From nearby sales"}</p>
+            {marketEst?.confidence && (
+              <p className="text-xs mt-0.5">{marketEst.confidence} confidence</p>
+            )}
+            {marketEst?.range_low != null && marketEst?.range_high != null && fairValue != null && (
+              <p className="text-xs mt-0.5">
+                Rough range: {fmt(marketEst.range_low)}–{fmt(marketEst.range_high)}
+              </p>
+            )}
+          </div>
+          {varPct != null && assessed != null && fairValue != null && (
+            <div className="ml-auto text-right">
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">vs county value</p>
+              <p className={`text-lg font-serif font-semibold ${
+                Math.abs(varPct) > 15 ? "text-amber-800" : "text-green-700"
+              }`}>
+                {varPct > 0 ? "+" : ""}{varPct}%
+              </p>
+              {v?.gap_dollars != null && (
+                <p className="text-xs text-muted-foreground">{fmt(v.gap_dollars)} difference</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {v?.verdict_label && (
+          <div className={`rounded-lg border px-4 py-3 text-sm ${verdictStyles}`}>
+            <div className="flex items-center gap-2 font-semibold">
+              {verdict === "over_assessed" ? (
+                <AlertTriangle className="w-4 h-4" />
+              ) : verdict === "under_assessed" ? (
+                <TrendingDown className="w-4 h-4" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              {v.verdict_label}
+            </div>
+            <p className="mt-1 opacity-90">{v.verdict_summary}</p>
+          </div>
+        )}
+
+        {expanded && (
+          <div className="space-y-4 border-t pt-4">
+            <p className="text-sm text-slate-600 leading-relaxed">{marketEstimateExplainer(v)}</p>
+            <MarketEstimatePriorityPanel marketEst={marketEst} fairValue={fairValue} />
+
+            {v?.comparable_sales?.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  This home&apos;s recent sales
+                </p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sale Date</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-right">vs County Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {v.comparable_sales.map((sale: Record<string, any>, i: number) => {
+                      const ratio = assessed && sale.selling_price
+                        ? (assessed / sale.selling_price) * 100
+                        : null;
+                      return (
+                        <TableRow key={i}>
+                          <TableCell className="text-sm">{fmtDate(sale.sell_date)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">{fmt(sale.selling_price)}</TableCell>
+                          <TableCell className="text-right font-mono text-sm">
+                            {ratio != null ? `${ratio.toFixed(1)}%` : "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {v?.nearby_comps?.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Similar homes that sold nearby
+                  </p>
+                  {v?.comp_matching?.summary && (
+                    <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                      {v.comp_matching.summary}
+                    </span>
+                  )}
+                </div>
+                {v?.comp_matching?.filters_applied?.length > 0 && (
+                  <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
+                    {v.comp_matching.filters_applied.map((f: string) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                )}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Address</TableHead>
+                      <TableHead>Sale Date</TableHead>
+                      <TableHead className="text-right">Sale Price</TableHead>
+                      <TableHead className="text-right">Sq Ft</TableHead>
+                      <TableHead className="text-right">Year</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {v.nearby_comps.map((comp: Record<string, any>, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell className="text-sm max-w-[160px] truncate">{comp.address ?? "—"}</TableCell>
+                        <TableCell className="text-sm">{fmtDate(comp.sell_date)}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{fmt(comp.selling_price)}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{comp.sqft ?? "—"}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{comp.year_built ?? "—"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {equityExtrap != null && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
+                  ZIP-wide comparison (uniformity study — not used for the estimate above)
+                </p>
+                <p className="text-xl font-serif font-semibold text-amber-950">{fmt(equityExtrap)}</p>
+                <p className="text-sm text-amber-950/90 leading-relaxed mt-2">{equityExtrapolationExplainer(v)}</p>
+              </div>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -1554,7 +1770,6 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
   const v = data.valuation as Record<string, any> | undefined;
   const freshness = data.data_freshness as Record<string, any> | undefined;
   const prc = (v?.prc ?? data.prc) as Record<string, any> | undefined;
-  const taxRoll = v?.tax_roll_assessment ?? data.TOTALVALUE;
   const fairValue = v?.market_estimate?.value ?? v?.fair_market_value ?? data.model_value;
   const equityExtrap = v?.equity_extrapolation?.value as number | undefined;
   const marketEst = v?.market_estimate as Record<string, any> | undefined;
@@ -1578,83 +1793,37 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
     <div className="space-y-5">
       {reappraisalYoY && <ThenVsNowPanel address={address} yoy={reappraisalYoY} />}
 
-      {narrative && <ParcelNarrativePanel narrative={narrative} />}
-
-      {/* Three key numbers */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 p-4 text-center">
-          <div className="text-xs text-blue-900 font-medium uppercase tracking-wide">County Tax Value</div>
-          <div className="text-2xl font-serif font-semibold mt-1 text-blue-950">{fmt(assessed)}</div>
-          <div className="text-[10px] text-muted-foreground mt-1">
-            {prc ? "Live county record" : "County file snapshot"}
+      {!reappraisalYoY && (
+        <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 px-4 py-3 flex flex-wrap items-baseline justify-between gap-2">
+          <div>
+            <p className="text-xs text-blue-900 font-medium uppercase tracking-wide">Current county tax value</p>
+            <p className="text-2xl font-serif font-semibold text-blue-950">{fmt(assessed)}</p>
           </div>
-          {prc && taxRoll != null && taxRoll !== assessed && (
-            <div className="text-[10px] text-amber-800 mt-1 leading-snug">
-              Older county file: {fmt(taxRoll)}
-              <span className="block text-amber-700/90">Updated when the county published new values</span>
-            </div>
-          )}
-        </div>
-        <div className="rounded-lg border-2 border-slate-800 p-4 text-center bg-slate-900 text-white shadow-lg">
-          <div className="text-xs text-amber-300 font-medium uppercase tracking-wide">What Sales Suggest</div>
-          <div className="text-2xl font-serif font-semibold mt-1">{fmt(fairValue)}</div>
-          <div className="text-[10px] text-slate-300 mt-1">
-            {marketEst?.method_label ?? "Parcel-specific evidence"}
-            {marketEst?.confidence && (
-              <span> · {marketEst.confidence} confidence</span>
-            )}
-          </div>
-          {marketEst?.range_low != null && marketEst?.range_high != null && fairValue != null && (
-            <div className="text-[10px] text-slate-400 mt-1">
-              Range: {fmt(marketEst.range_low)}–{fmt(marketEst.range_high)}
-            </div>
-          )}
-        </div>
-        <div className={`rounded-lg border-2 p-4 text-center ${
-          Math.abs(varPct ?? 0) > 15 ? "bg-red-50 border-red-300" : "bg-green-50 border-green-300"
-        }`}>
-          <div className="text-xs text-muted-foreground uppercase tracking-wide">The Gap</div>
-          <div className={`text-2xl font-serif font-semibold mt-1 ${
-            Math.abs(varPct ?? 0) > 15 ? "text-red-700" : "text-green-700"
-          }`}>
-            {varPct != null ? `${varPct > 0 ? "+" : ""}${varPct}%` : "—"}
-          </div>
-          {v?.gap_dollars != null && (
-            <div className="text-[10px] text-muted-foreground mt-1">
-              {v.gap_dollars > 0 ? "+" : ""}{fmt(v.gap_dollars)} difference
-            </div>
-          )}
-          {data.equity_score != null && (
-            <div className="text-[10px] text-muted-foreground mt-2 pt-2 border-t border-black/5 leading-snug">
-              Match score {data.equity_score}/100 — how close county value and sale evidence are
-            </div>
-          )}
-        </div>
-      </div>
-
-      {v?.verdict_label && (
-        <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
-          <div className="flex items-center gap-2 font-semibold">
-            {verdict === "over_assessed" ? (
-              <AlertTriangle className="w-4 h-4" />
-            ) : verdict === "under_assessed" ? (
-              <TrendingDown className="w-4 h-4" />
-            ) : (
-              <CheckCircle2 className="w-4 h-4" />
-            )}
-            {v.verdict_label}
-          </div>
-          <p className="text-sm mt-1 opacity-90">{v.verdict_summary}</p>
+          <p className="text-xs text-muted-foreground max-w-sm">
+            {prc ? "From live county property record" : "From county tax file"}
+          </p>
         </div>
       )}
 
-      <MarketEstimatePriorityPanel marketEst={marketEst} fairValue={fairValue} />
-
-      {fairValue != null && (
-        <p className="text-sm text-slate-600 leading-relaxed px-1">
-          {marketEstimateExplainer(v)}
+      {reappraisalYoY && (
+        <p className="text-sm text-muted-foreground px-1 -mt-2">
+          Today&apos;s county tax value on file: <strong className="text-slate-800">{fmt(assessed)}</strong>
+          {prc ? " (live county record)" : ""}
         </p>
       )}
+
+      {narrative && <ParcelNarrativePanel narrative={narrative} />}
+
+      <SalePriceEstimateSection
+        v={v}
+        assessed={assessed}
+        fairValue={fairValue}
+        marketEst={marketEst}
+        varPct={varPct}
+        verdict={verdict}
+        verdictStyles={verdictStyles}
+        equityExtrap={equityExtrap}
+      />
 
       {warnings.length > 0 && (
         <div className="space-y-2">
@@ -1678,104 +1847,6 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
               <p className="mt-1 text-xs leading-relaxed opacity-90">{w.detail}</p>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Supporting evidence */}
-      {v?.comparable_sales?.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            This home&apos;s recent sales
-          </p>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Sale Date</TableHead>
-                <TableHead className="text-right">Price</TableHead>
-                <TableHead className="text-right">vs County Value</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {v.comparable_sales.map((sale: Record<string, any>, i: number) => {
-                const ratio = assessed && sale.selling_price
-                  ? (assessed / sale.selling_price) * 100
-                  : null;
-                return (
-                  <TableRow key={i}>
-                    <TableCell className="text-sm">{fmtDate(sale.sell_date)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{fmt(sale.selling_price)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {ratio != null ? `${ratio.toFixed(1)}%` : "—"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {v?.nearby_comps?.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Nearby comparable sales · same ZIP
-            </p>
-            {v?.comp_matching?.summary && (
-              <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-                {v.comp_matching.summary}
-              </span>
-            )}
-          </div>
-          {v?.comp_matching?.filters_applied?.length > 0 && (
-            <ul className="text-[11px] text-muted-foreground space-y-0.5 list-disc list-inside">
-              {v.comp_matching.filters_applied.map((f: string) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-          )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Address</TableHead>
-                <TableHead>Sale Date</TableHead>
-                <TableHead className="text-right">Sale Price</TableHead>
-                <TableHead className="text-right">Sq Ft</TableHead>
-                <TableHead className="text-right">Year</TableHead>
-                <TableHead className="text-right">Assessed</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {v.nearby_comps.map((comp: Record<string, any>) => (
-                <TableRow key={comp.pin}>
-                  <TableCell className="text-sm max-w-[200px] truncate">{comp.address ?? comp.pin}</TableCell>
-                  <TableCell className="text-sm">{fmtDate(comp.sell_date)}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{fmt(comp.selling_price)}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{comp.sqft != null ? comp.sqft.toLocaleString() : "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{comp.year_built ?? "—"}</TableCell>
-                  <TableCell className="text-right font-mono text-sm">{fmt(comp.assessed)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {equityExtrap != null && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50/60 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 mb-2">
-            ZIP equity extrapolation (uniformity only — not the market estimate)
-          </p>
-          <div className="flex flex-wrap items-baseline gap-3 mb-2">
-            <span className="text-2xl font-serif font-semibold text-amber-950">{fmt(equityExtrap)}</span>
-            {v?.equity_extrapolation?.metro_adjusted_value != null &&
-              v.equity_extrapolation.metro_adjusted_value !== equityExtrap && (
-              <span className="text-sm text-amber-800">
-                Metro-adjusted: {fmt(v.equity_extrapolation.metro_adjusted_value)}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-amber-950/90 leading-relaxed">{equityExtrapolationExplainer(v)}</p>
         </div>
       )}
 

@@ -92,14 +92,13 @@ export function buildParcelNarrative(opts: {
   const prc = v.prc;
 
   const tldr: string[] = [
-    `What the county says you're taxed on: ${money(assessed)}.`,
-    market != null
-      ? `What similar home sales suggest today: ${money(market)}.`
-      : "We need more nearby sale data to estimate what this home might sell for today.",
     yoy
-      ? `New value review: ${money(yoy.value_2021)} in 2021 → ${money(yoy.value_2026)} now (+${pct(yoy.change_pct, true)}).`
+      ? `Value review: ${money(yoy.value_2021)} in 2021 → ${money(yoy.value_2026)} now (+${pct(yoy.change_pct, true)}).`
+      : `County tax value today: ${money(assessed)}.`,
+    market != null
+      ? `Separate sale-price estimate (not your tax bill): ${money(market)}.`
       : null,
-    "These are separate lenses on the same property — we show each one clearly rather than blending them into a single headline figure.",
+    "These answer different questions — the review cycle sets your tax value; sales evidence is optional context.",
   ].filter((s): s is string => !!s);
 
   let headline: string;
