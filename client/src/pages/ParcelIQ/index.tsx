@@ -1715,56 +1715,101 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
   return <ParcelDetailBody data={data as Record<string, any>} />;
 }
 
-function ParcelNarrativePanel({ narrative }: { narrative: Record<string, any> }) {
-  const sections = (narrative.sections as Array<Record<string, any>>) ?? [];
+function NarrativeTopicCard({ section }: { section: Record<string, any> }) {
+  const [open, setOpen] = useState(false);
+  const summary = String(section.summary ?? section.paragraphs?.[0] ?? "").slice(0, 160);
+  const wide = section.id === "why" || section.id === "caveats";
+
+  return (
+    <div
+      className={`rounded-lg border border-amber-200/70 bg-white shadow-sm overflow-hidden h-fit ${
+        wide ? "sm:col-span-2" : ""
+      }`}
+    >
+      <button
+        type="button"
+        className="w-full text-left px-4 py-3 hover:bg-amber-50/40 transition-colors"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900">{section.title}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">
+              {summary}
+            </p>
+          </div>
+          {open ? (
+            <ChevronUp className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
+          ) : (
+            <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
+          )}
+        </div>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 border-t border-amber-100/80 space-y-2">
+          {section.paragraphs?.map((p: string) => (
+            <p key={p.slice(0, 48)} className="text-sm text-slate-700 leading-relaxed">
+              {p}
+            </p>
+          ))}
+          {section.bullets?.length > 0 && (
+            <ul className="space-y-1.5 text-sm text-slate-700 list-disc list-inside">
+              {section.bullets.map((b: string) => (
+                <li key={b.slice(0, 48)} className="leading-relaxed">{b}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ParcelNarrativePanel({
+  narrative,
+  omitSectionIds = [],
+}: {
+  narrative: Record<string, any>;
+  omitSectionIds?: string[];
+}) {
+  const allSections = (narrative.sections as Array<Record<string, any>>) ?? [];
+  const sections = allSections.filter((s) => !omitSectionIds.includes(s.id));
   const tldr = (narrative.tldr as string[]) ?? [];
 
   return (
-    <Card className="border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-white shadow-sm">
+    <Card className="border border-amber-200 bg-gradient-to-br from-amber-50/50 to-white shadow-sm">
       <CardHeader className="py-3 px-4 pb-2">
         <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-950">
           <BookOpen className="w-4 h-4 text-amber-700" />
           Plain-English walkthrough
         </CardTitle>
-        <p className="text-sm font-serif text-slate-900 mt-2 leading-relaxed">
+        <p className="text-base font-serif text-slate-900 mt-2 leading-snug">
           {narrative.headline}
         </p>
-      </CardHeader>
-      <CardContent className="px-4 pb-4 space-y-4">
         {tldr.length > 0 && (
-          <ul className="space-y-1.5 text-sm text-slate-800 bg-white/80 rounded-lg border border-amber-200 px-4 py-3">
+          <ul className="mt-3 flex flex-wrap gap-2">
             {tldr.map((line) => (
-              <li key={line} className="flex items-start gap-2">
-                <span className="text-amber-600 mt-0.5">•</span>
-                <span>{line}</span>
+              <li
+                key={line}
+                className="text-[11px] text-slate-700 bg-white/90 border border-amber-200/60 rounded-full px-3 py-1 leading-snug"
+              >
+                {line}
               </li>
             ))}
           </ul>
         )}
-
-        <div className="space-y-4">
+      </CardHeader>
+      <CardContent className="px-4 pb-4">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground mb-3">
+          Tap a topic for details
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
           {sections.map((section) => (
-            <div key={section.id} className="border-t border-amber-100 pt-3 first:border-0 first:pt-0">
-              <h4 className="text-xs font-bold uppercase tracking-wide text-amber-900 mb-2">
-                {section.title}
-              </h4>
-              {section.paragraphs?.map((p: string) => (
-                <p key={p.slice(0, 40)} className="text-sm text-slate-700 leading-relaxed mb-2">
-                  {p}
-                </p>
-              ))}
-              {section.bullets?.length > 0 && (
-                <ul className="space-y-1.5 text-sm text-slate-700 list-disc list-inside">
-                  {section.bullets.map((b: string) => (
-                    <li key={b.slice(0, 48)} className="leading-relaxed">{b}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <NarrativeTopicCard key={section.id} section={section} />
           ))}
         </div>
-
-        <p className="text-[10px] text-muted-foreground border-t border-amber-100 pt-3 leading-relaxed">
+        <p className="text-[10px] text-muted-foreground border-t border-amber-100 mt-4 pt-3 leading-relaxed">
           {narrative.disclaimer}
         </p>
       </CardContent>
@@ -1781,8 +1826,11 @@ function ThenVsNowPanel({
 }) {
   const pct = Number(yoy.change_pct);
   const pctLabel = `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
+  const pctPlain = `${Math.abs(pct).toFixed(1)}%`;
   const perHundred = Math.round(100 + pct);
   const fairness = buildGrowthFairnessVerdict(yoy);
+  const changeAmt = Number(yoy.change_amt);
+  const changeDirection = pct > 0 ? "up" : pct < 0 ? "down" : "unchanged";
 
   return (
     <Card className="border-2 border-indigo-300 bg-indigo-50/30">
@@ -1794,23 +1842,29 @@ function ThenVsNowPanel({
         <p className="text-sm font-medium text-indigo-950 mt-1">{address}</p>
       </CardHeader>
       <CardContent className="px-4 pb-4 space-y-5">
-        {/* Timeline */}
-        <div className="relative pl-6 border-l-2 border-indigo-300 space-y-6">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">Then — 2021</p>
-            <p className="text-sm text-slate-700 mt-0.5">What the county said your home was worth:</p>
-            <p className="text-2xl font-serif font-semibold text-indigo-950 mt-1">{fmt(yoy.value_2021)}</p>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <div className="rounded-lg border-2 border-indigo-200 bg-white px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-800">Then — 2021</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-snug">
+              What the county said your home was worth
+            </p>
+            <p className="text-2xl font-serif font-semibold text-indigo-950 mt-2">{fmt(yoy.value_2021)}</p>
           </div>
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">Now — 2026</p>
-            <p className="text-sm text-slate-700 mt-0.5">What the county says it is worth today:</p>
-            <p className="text-2xl font-serif font-semibold text-indigo-950 mt-1">{fmt(yoy.value_2026)}</p>
+          <div className="rounded-lg border-2 border-indigo-300 bg-white px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-800">Now — 2026</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-snug">
+              What the county says it is worth today
+            </p>
+            <p className="text-2xl font-serif font-semibold text-indigo-950 mt-2">{fmt(yoy.value_2026)}</p>
           </div>
-          <div className="rounded-lg border-2 border-indigo-400 bg-white p-4 -ml-6 pl-6">
-            <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">The change</p>
-            <p className="text-2xl font-serif font-semibold mt-1 text-indigo-950">{pctLabel}</p>
-            <p className="text-sm text-indigo-900 mt-1">
-              {yoy.change_amt > 0 ? "+" : ""}{fmt(yoy.change_amt)} — your property value went up by {pctLabel.replace("+", "")}
+          <div className="rounded-lg border-2 border-indigo-400 bg-indigo-50/80 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-900">The change</p>
+            <p className="text-2xl font-serif font-semibold text-indigo-950 mt-2">{pctLabel}</p>
+            <p className="text-xs text-indigo-900 mt-1 leading-snug">
+              {changeAmt > 0 ? "+" : ""}{fmt(changeAmt)}
+              {changeDirection === "unchanged"
+                ? " — no change"
+                : ` — your property value went ${changeDirection} by ${pctPlain}`}
             </p>
           </div>
         </div>
@@ -1883,6 +1937,8 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
 
   return (
     <div className="space-y-5">
+      {reappraisalYoY && <ThenVsNowPanel address={address} yoy={reappraisalYoY} />}
+
       {(assessed != null || fairValue != null) && (
         <div className="grid sm:grid-cols-2 gap-3">
           <div className="rounded-lg border-2 border-blue-200 bg-blue-50/40 px-4 py-3">
@@ -1899,9 +1955,12 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         </div>
       )}
 
-      {reappraisalYoY && <ThenVsNowPanel address={address} yoy={reappraisalYoY} />}
-
-      {narrative && <ParcelNarrativePanel narrative={narrative} />}
+      {narrative && (
+        <ParcelNarrativePanel
+          narrative={narrative}
+          omitSectionIds={reappraisalYoY ? ["then_now", "fairness"] : []}
+        />
+      )}
 
       <SalePriceEstimateSection
         v={v}

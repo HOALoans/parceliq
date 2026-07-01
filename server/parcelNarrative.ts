@@ -5,6 +5,7 @@ import type { DataFreshness } from "./assessmentFreshness.js";
 export type NarrativeSection = {
   id: string;
   title: string;
+  summary: string;
   paragraphs: string[];
   bullets?: string[];
 };
@@ -23,8 +24,11 @@ function money(n: number | null | undefined): string {
 
 function pct(n: number | null | undefined, signed = false): string {
   if (n == null) return "—";
-  const v = signed && n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1);
-  return `${v}%`;
+  const abs = Math.abs(n).toFixed(1);
+  if (!signed) return abs;
+  if (n > 0) return `+${abs}`;
+  if (n < 0) return `-${abs}`;
+  return abs;
 }
 
 function fairnessVerdict(yoy: ReappraisalYoY): { emoji: string; label: string; detail: string } {
@@ -43,21 +47,21 @@ function fairnessVerdict(yoy: ReappraisalYoY): { emoji: string; label: string; d
       emoji: "🟢",
       label: "In line with county median",
       detail:
-        `Your home's value change (+${pct(home, true)}) is close to the county median (+${pct(county)}) for this review cycle — ` +
+        `Your home's value change (${pct(home, true)}%) is close to the county median (${pct(county, true)}%) for this review cycle — ` +
         `consistent with how assessors aim to apply updates uniformly across properties.`,
     };
   }
   if (diff > 2) {
     const zipNote =
       yoy.zip_name && yoy.zip_median_change_pct != null
-        ? ` Typical change in ${yoy.zip_name}: +${pct(yoy.zip_median_change_pct)}.`
+        ? ` Typical change in ${yoy.zip_name}: ${pct(yoy.zip_median_change_pct, true)}%.`
         : "";
     return {
       emoji: "ℹ️",
       label: "Above county median",
       detail:
         `Your home's increase is about ${diff} percentage points above the county median ` +
-        `(your home: +${pct(home, true)} vs county median: +${pct(county)}).${zipNote} ` +
+        `(your home: ${pct(home, true)}% vs county median: ${pct(county, true)}%).${zipNote} ` +
         `This may reflect neighborhood market strength or property-specific factors in the assessor's file. ` +
         `The county's formal appeal process is available if you believe the value needs adjustment.`,
     };
@@ -67,7 +71,7 @@ function fairnessVerdict(yoy: ReappraisalYoY): { emoji: string; label: string; d
     label: "Below county median",
     detail:
       `Your home's increase is about ${Math.abs(diff)} percentage points below the county median ` +
-      `(your home: +${pct(home, true)} vs county median: +${pct(county)}). ` +
+      `(your home: ${pct(home, true)}% vs county median: ${pct(county, true)}%). ` +
       `Your assessed share of countywide growth is lower than the typical property this cycle.`,
   };
 }
@@ -93,7 +97,7 @@ export function buildParcelNarrative(opts: {
 
   const tldr: string[] = [
     yoy
-      ? `Value review: ${money(yoy.value_2021)} in 2021 → ${money(yoy.value_2026)} now (+${pct(yoy.change_pct, true)}).`
+      ? `Value review: ${money(yoy.value_2021)} in 2021 → ${money(yoy.value_2026)} now (${pct(yoy.change_pct, true)}%).`
       : `County tax value today: ${money(assessed)}.`,
     market != null
       ? `Parcelogik Fair Value: ${money(market)}.`
@@ -103,7 +107,7 @@ export function buildParcelNarrative(opts: {
 
   let headline: string;
   if (yoy) {
-    headline = `${address} — the assessor's value changed from ${money(yoy.value_2021)} to ${money(yoy.value_2026)} (+${pct(yoy.change_pct, true)}) in the latest review.`;
+    headline = `${address} — the assessor's value changed from ${money(yoy.value_2021)} to ${money(yoy.value_2026)} (${pct(yoy.change_pct, true)}%) in the latest review.`;
   } else if (market == null) {
     headline = `${address} — county value is ${money(assessed)}; we need more sale data to estimate market price.`;
   } else if (v.verdict === "over_assessed") {
@@ -119,6 +123,7 @@ export function buildParcelNarrative(opts: {
   sections.push({
     id: "why",
     title: "Why values change in a review cycle",
+    summary: "Assessors update values on a cycle so similar homes stay treated uniformly as markets move.",
     paragraphs: [
       "Assessor offices periodically update property values to reflect market changes since the last cycle. " +
         "The goal is uniformity — applying the same standards so similar properties are treated similarly, " +
@@ -134,10 +139,11 @@ export function buildParcelNarrative(opts: {
     sections.push({
       id: "then_now",
       title: "What changed",
+      summary: `${money(yoy.value_2021)} → ${money(yoy.value_2026)} (${pct(yoy.change_pct, true)}%) in the latest review.`,
       paragraphs: [
         `What the county said your home was worth in 2021: ${money(yoy.value_2021)}.`,
         `What the county says it is worth now: ${money(yoy.value_2026)}.`,
-        `The difference: ${yoy.change_amt > 0 ? "+" : ""}${money(yoy.change_amt)} (your property value went up by ${pct(yoy.change_pct, true)}).`,
+        `The difference: ${yoy.change_amt > 0 ? "+" : ""}${money(yoy.change_amt)} (your property value went up by ${pct(yoy.change_pct, true)}%).`,
         `According to the county's math, for every $100 your home was worth five years ago, it is now worth about $${perHundred}. ` +
           `That mirrors what has been happening in the housing market across our area.`,
       ],
@@ -146,11 +152,12 @@ export function buildParcelNarrative(opts: {
     sections.push({
       id: "fairness",
       title: "How does this compare countywide?",
+      summary: `${verdict.emoji} ${verdict.label} — your home ${pct(yoy.change_pct, true)}% vs county median ${pct(yoy.county_median_change_pct, true)}%.`,
       paragraphs: [
         `${verdict.emoji} ${verdict.label}. ${verdict.detail}`,
-        `Your home's growth: +${pct(yoy.change_pct)}. County median: +${pct(yoy.county_median_change_pct)}.`,
+        `Your home's growth: ${pct(yoy.change_pct, true)}%. County median: ${pct(yoy.county_median_change_pct, true)}%.`,
         yoy.zip_name && yoy.zip_median_change_pct != null
-          ? `Typical growth in ${yoy.zip_name} (ZIP ${yoy.zipcode}): +${pct(yoy.zip_median_change_pct)}.`
+          ? `Typical growth in ${yoy.zip_name} (ZIP ${yoy.zipcode}): ${pct(yoy.zip_median_change_pct, true)}%.`
           : "",
       ].filter(Boolean),
     });
@@ -159,6 +166,9 @@ export function buildParcelNarrative(opts: {
   sections.push({
     id: "county",
     title: "What the county says today",
+    summary: prc
+      ? `${money(prc.total_appraised)} on the live county record${prc.latest_value_year ? ` (${prc.latest_value_year})` : ""}.`
+      : `${money(assessed)} from the county tax file.`,
     paragraphs: [
       prc
         ? `We pulled the live county property record. Total value on file: ${money(prc.total_appraised)}${prc.latest_value_year ? ` (${prc.latest_value_year} tax year)` : ""}.`
@@ -201,9 +211,17 @@ export function buildParcelNarrative(opts: {
     marketParagraphs.push("We don't have enough nearby sale data to estimate a market price for this home.");
   }
 
+  const marketSummary =
+    market != null && comps.length > 0
+      ? `About ${money(market)} from ${comps.length} nearby comparable sales.`
+      : market != null
+        ? `About ${money(market)} from property characteristics.`
+        : "Not enough nearby sale data for a market estimate.";
+
   sections.push({
     id: "market",
     title: "What real sales suggest",
+    summary: marketSummary,
     paragraphs: marketParagraphs.filter(Boolean),
   });
 
@@ -217,11 +235,12 @@ export function buildParcelNarrative(opts: {
     sections.push({
       id: "gap",
       title: "The gap",
+      summary: `${gapLabel}${v.variance_pct != null ? ` (${pct(v.variance_pct, true)}%)` : ""}.`,
       paragraphs: [
         gapLabel + ".",
         v.verdict_summary,
         v.gap_dollars != null
-          ? `Dollar difference: ${v.gap_dollars > 0 ? "+" : ""}${money(v.gap_dollars)} (${pct(v.variance_pct, true)}).`
+          ? `Dollar difference: ${v.gap_dollars > 0 ? "+" : ""}${money(v.gap_dollars)} (${pct(v.variance_pct, true)}%).`
           : "",
       ].filter(Boolean),
     });
@@ -230,6 +249,7 @@ export function buildParcelNarrative(opts: {
   sections.push({
     id: "how",
     title: "How Parcelogik does the math",
+    summary: "Comparable sales first, then market trends and review-cycle context.",
     paragraphs: [],
     bullets: [
       "We look at real sales — actual prices from homes bought and sold in Buncombe County.",
@@ -246,6 +266,9 @@ export function buildParcelNarrative(opts: {
   sections.push({
     id: "caveats",
     title: "Good to know",
+    summary: fresh.warnings.length
+      ? `${fresh.warnings.length} data note${fresh.warnings.length !== 1 ? "s" : ""} for this property.`
+      : "No special warnings — not a licensed appraisal.",
     paragraphs: fresh.warnings.length
       ? ["A few data notes for this property:"]
       : ["No special warnings for this property."],
