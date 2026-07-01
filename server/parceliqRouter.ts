@@ -10,6 +10,7 @@ import { buildValuationDetail, type ComparableSale, type ZipEquityRow, type Mark
 import { buildDataFreshness } from "./assessmentFreshness.js";
 import { loadPrcForParcel } from "./spatialestPrc.js";
 import { buildSubjectProfile, fetchComparableSales } from "./comparableSales.js";
+import { fetchReappraisalYoY, fetchReappraisalSummary } from "./reappraisalYoY.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
 import { EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
 
@@ -146,7 +147,7 @@ export const parceliqRouter = router({
 
       const zip = enriched.POSTAL_CODE;
       const subject = buildSubjectProfile(row, prc);
-      const [zipEquityRes, marketRes, salesRes, compMatch, rodSyncRes] = await Promise.all([
+      const [zipEquityRes, marketRes, salesRes, compMatch, reappraisalYoY, rodSyncRes] = await Promise.all([
         pool.query(
           "SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price, updated_at FROM parceliq_zip_equity WHERE zip_code=$1 LIMIT 1",
           [zip]
@@ -161,6 +162,7 @@ export const parceliqRouter = router({
           [String(row.pin)]
         ).catch(() => ({ rows: [] as Record<string, unknown>[] })),
         fetchComparableSales(pool, subject),
+        fetchReappraisalYoY(pool, String(row.pin)),
         pool.query(
           `SELECT finished_at FROM parceliq_ingest_runs
            WHERE job_name='register_of_deeds' AND status='success'
@@ -231,6 +233,7 @@ export const parceliqRouter = router({
         model_breakdown: valuation.model_breakdown,
         valuation,
         data_freshness: dataFreshness,
+        reappraisal_yoy: reappraisalYoY,
         levy_due:    row.levy_due,
         subdivision: row.subdivision,
         township:    row.township,
@@ -504,6 +507,15 @@ export const parceliqRouter = router({
       countyMedianPct: +(countyMedianRatio * 100).toFixed(1),
       zipCodes,
       source: rows.length ? "parceliq_zip_equity" : "reference",
+    };
+  }),
+
+  reappraisalSummary: publicProcedure.query(async () => {
+    const summary = await fetchReappraisalSummary(pool);
+    return {
+      ...summary,
+      source: "parceliq_yoy_change",
+      cycle: "2021 → 2026",
     };
   }),
 

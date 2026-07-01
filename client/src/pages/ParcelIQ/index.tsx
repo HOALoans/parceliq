@@ -547,6 +547,7 @@ function ZipLink({
 function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
   const { data, isLoading, refetch } = trpc.parceliq.searchParcels.useQuery({ limit: 5 });
   const { data: ratios, isLoading: ratiosLoading } = trpc.parceliq.assessmentRatios.useQuery();
+  const { data: reappraisal, isLoading: reappraisalLoading } = trpc.parceliq.reappraisalSummary.useQuery();
 
   const zipRatios = ratios?.zipCodes ?? [];
   const countyPct = ratios?.countyMedianPct;
@@ -656,6 +657,61 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                   })}
                 </TableBody>
               </Table>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 2021 → 2026 reappraisal cycle */}
+      <Card className="border-2 border-indigo-300 bg-indigo-50/20">
+        <CardHeader className="py-3 px-4 pb-2">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-indigo-700" />
+            2021 → 2026 Reappraisal · Buncombe County
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 px-4 pb-4">
+          {reappraisalLoading ? (
+            <p className="text-sm text-muted-foreground">Loading reappraisal cycle data…</p>
+          ) : !reappraisal?.county ? (
+            <p className="text-sm text-muted-foreground">
+              Reappraisal comparison not loaded. Run{" "}
+              <code className="font-mono text-xs">node loadProperty2026.mjs</code> to populate 2026 values.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-indigo-950 leading-relaxed">
+                Across <strong>{reappraisal.county.matched_parcels.toLocaleString()}</strong> matched parcels,
+                the county-wide <strong>median assessment increase is +{reappraisal.county.county_median_change_pct.toFixed(1)}%</strong>{" "}
+                (avg ${(reappraisal.county.avg_2021 / 1e6).toFixed(2)}M → ${(reappraisal.county.avg_2026 / 1e6).toFixed(2)}M).
+                Open any parcel in Property Search to see its 2021 baseline and 2026 value side by side.
+              </p>
+              {reappraisal.zips.length > 0 && (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-white/80 hover:bg-white/80">
+                      <TableHead>ZIP</TableHead>
+                      <TableHead>Area</TableHead>
+                      <TableHead className="text-right">Parcels</TableHead>
+                      <TableHead className="text-right">Median change</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reappraisal.zips.map((z) => (
+                      <TableRow key={z.zip} className="bg-white/60">
+                        <TableCell>
+                          <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-xs" />
+                        </TableCell>
+                        <TableCell className="text-sm">{z.name}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{z.parcel_count.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-mono text-sm font-medium">
+                          +{z.median_change_pct.toFixed(1)}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </>
           )}
         </CardContent>
@@ -1129,6 +1185,87 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
   return <ParcelDetailBody data={data as Record<string, any>} />;
 }
 
+function ReappraisalYoYPanel({ yoy }: { yoy: Record<string, any> }) {
+  const pct = Number(yoy.change_pct);
+  const pctLabel = `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
+  const vsZip = yoy.vs_zip_median_pts as number | null;
+  const vsZipLabel =
+    vsZip == null
+      ? null
+      : vsZip > 2
+        ? `${vsZip.toFixed(1)} pts above ZIP median`
+        : vsZip < -2
+          ? `${Math.abs(vsZip).toFixed(1)} pts below ZIP median`
+          : "Near ZIP median";
+
+  return (
+    <Card className="border-2 border-indigo-200 bg-indigo-50/30">
+      <CardHeader className="py-3 px-4 pb-2">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-indigo-700" />
+          2021 → 2026 Reappraisal
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Buncombe County tax roll baseline (2021 cycle) vs. 2026 reappraisal file — separate from market estimate.
+        </p>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
+          <div className="rounded-lg border bg-white p-4 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">2021 baseline</div>
+            <div className="text-xl font-serif font-semibold mt-1">{fmt(yoy.value_2021)}</div>
+            <div className="text-[10px] text-muted-foreground mt-1">Prior cycle tax roll</div>
+          </div>
+          <div className="rounded-lg border-2 border-indigo-300 bg-indigo-50 p-4 text-center flex flex-col justify-center">
+            <div className="text-[10px] uppercase tracking-wide text-indigo-800 font-medium">Change</div>
+            <div className="text-2xl font-serif font-semibold mt-1 text-indigo-950">{pctLabel}</div>
+            <div className="text-xs text-indigo-800 mt-1">
+              {yoy.change_amt > 0 ? "+" : ""}{fmt(yoy.change_amt)}
+            </div>
+          </div>
+          <div className="rounded-lg border bg-white p-4 text-center">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">2026 reappraisal</div>
+            <div className="text-xl font-serif font-semibold mt-1">{fmt(yoy.value_2026)}</div>
+            <div className="text-[10px] text-muted-foreground mt-1">2026 county file</div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          {yoy.zip_name && (
+            <span className="bg-white border rounded px-2 py-1">
+              ZIP {yoy.zipcode} ({yoy.zip_name})
+              {yoy.zip_median_change_pct != null && (
+                <> · median <strong>+{Number(yoy.zip_median_change_pct).toFixed(1)}%</strong></>
+              )}
+            </span>
+          )}
+          {yoy.county_median_change_pct != null && (
+            <span className="bg-white border rounded px-2 py-1">
+              County median <strong>+{Number(yoy.county_median_change_pct).toFixed(1)}%</strong>
+            </span>
+          )}
+          {vsZipLabel && (
+            <span className={`border rounded px-2 py-1 ${
+              vsZip != null && vsZip > 2
+                ? "bg-amber-50 border-amber-200 text-amber-900"
+                : vsZip != null && vsZip < -2
+                  ? "bg-green-50 border-green-200 text-green-900"
+                  : "bg-white"
+            }`}>
+              This parcel: {vsZipLabel}
+            </span>
+          )}
+          {yoy.neighborhood_code && (
+            <span className="bg-white border rounded px-2 py-1 text-muted-foreground">
+              Neighborhood {yoy.neighborhood_code}
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ParcelDetailBody({ data }: { data: Record<string, any> }) {
   const v = data.valuation as Record<string, any> | undefined;
   const freshness = data.data_freshness as Record<string, any> | undefined;
@@ -1149,6 +1286,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
         : "bg-green-50 border-green-200 text-green-900";
 
   const warnings = (freshness?.warnings as Array<Record<string, string>> | undefined) ?? [];
+  const reappraisalYoY = data.reappraisal_yoy as Record<string, any> | null | undefined;
 
   return (
     <div className="space-y-5">
@@ -1195,6 +1333,8 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           )}
         </div>
       </div>
+
+      {reappraisalYoY && <ReappraisalYoYPanel yoy={reappraisalYoY} />}
 
       {v?.verdict_label && (
         <div className={`rounded-lg border px-4 py-3 ${verdictStyles}`}>
