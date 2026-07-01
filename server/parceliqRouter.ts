@@ -11,6 +11,7 @@ import { buildDataFreshness } from "./assessmentFreshness.js";
 import { loadPrcForParcel } from "./spatialestPrc.js";
 import { buildSubjectProfile, fetchComparableSales } from "./comparableSales.js";
 import { fetchReappraisalYoY, fetchReappraisalSummary } from "./reappraisalYoY.js";
+import { fetchReappraisalTaxEquity } from "./reappraisalTaxEquity.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
 import { EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
 
@@ -511,9 +512,13 @@ export const parceliqRouter = router({
   }),
 
   reappraisalSummary: publicProcedure.query(async () => {
-    const summary = await fetchReappraisalSummary(pool);
+    const [summary, taxEquity] = await Promise.all([
+      fetchReappraisalSummary(pool),
+      fetchReappraisalTaxEquity(pool),
+    ]);
     return {
       ...summary,
+      tax_equity: taxEquity,
       source: "parceliq_yoy_change",
       cycle: "2021 → 2026",
     };

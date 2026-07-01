@@ -712,6 +712,98 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                   </TableBody>
                 </Table>
               )}
+
+              {reappraisal.tax_equity && (
+                <div className="rounded-lg border-2 border-indigo-300 bg-white p-4 space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-indigo-950">
+                      Imputed tax impact of reappraisal disparity
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      {reappraisal.tax_equity.methodology}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                      {
+                        label: "ZIP median spread",
+                        value: `${reappraisal.tax_equity.zip_median_spread_pts.toFixed(1)} pts`,
+                        sub: reappraisal.tax_equity.lowest_zip && reappraisal.tax_equity.highest_zip
+                          ? `${reappraisal.tax_equity.lowest_zip.name} → ${reappraisal.tax_equity.highest_zip.name}`
+                          : "Lowest vs highest ZIP",
+                      },
+                      {
+                        label: "Under-shifted value",
+                        value: fmtB(reappraisal.tax_equity.under_assessed_value),
+                        sub: `${reappraisal.tax_equity.under_assessed_share_pct}% of 2026 tax base`,
+                      },
+                      {
+                        label: "Imputed annual tax gap",
+                        value: fmtB(reappraisal.tax_equity.imputed_annual_tax_shortfall),
+                        sub: `At ${reappraisal.tax_equity.effective_tax_rate_pct}% effective levy rate`,
+                      },
+                      {
+                        label: "Value-weighted gap",
+                        value: `${reappraisal.tax_equity.value_weighted_median_gap_pts > 0 ? "+" : ""}${reappraisal.tax_equity.value_weighted_median_gap_pts} pts`,
+                        sub: "ZIP median vs county, weighted by 2026 value",
+                      },
+                    ].map(({ label, value, sub }) => (
+                      <div key={label} className="rounded border bg-indigo-50/50 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+                        <p className="text-lg font-serif font-semibold mt-0.5">{value}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-indigo-900 leading-relaxed">
+                    Parcels that received a <strong>smaller % increase than the county median</strong>{" "}
+                    (+{reappraisal.tax_equity.county_median_change_pct.toFixed(1)}%) hold roughly{" "}
+                    <strong>{fmtB(reappraisal.tax_equity.under_assessed_value)}</strong> in assessed value
+                    that would be higher under a uniform median increase — imputing about{" "}
+                    <strong>{fmtB(reappraisal.tax_equity.imputed_annual_tax_shortfall)}/year</strong> in
+                    property taxes not captured vs. that counterfactual. ZIPs with steeper increases carry
+                    the offsetting surplus (~{fmtB(reappraisal.tax_equity.imputed_annual_tax_surplus)}/yr).
+                  </p>
+
+                  {reappraisal.tax_equity.zips.length > 0 && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-indigo-50/80 hover:bg-indigo-50/80">
+                          <TableHead>ZIP</TableHead>
+                          <TableHead className="text-right">Med. Δ</TableHead>
+                          <TableHead className="text-right">vs county</TableHead>
+                          <TableHead className="text-right">% of base</TableHead>
+                          <TableHead className="text-right">Under-shifted</TableHead>
+                          <TableHead className="text-right">Imputed tax/yr</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {reappraisal.tax_equity.zips.map((z: Record<string, number | string>) => (
+                          <TableRow key={String(z.zip)}>
+                            <TableCell>
+                              <ZipLink zip={String(z.zip)} onOpenZip={onOpenZip} className="text-xs" />
+                              <span className="text-[10px] text-muted-foreground ml-1">{z.name}</span>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs">+{Number(z.median_change_pct).toFixed(1)}%</TableCell>
+                            <TableCell className={`text-right font-mono text-xs ${
+                              Number(z.vs_county_median_pts) > 0 ? "text-amber-800" : "text-green-800"
+                            }`}>
+                              {Number(z.vs_county_median_pts) > 0 ? "+" : ""}{Number(z.vs_county_median_pts).toFixed(1)} pts
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-xs">{Number(z.share_of_county_value_pct).toFixed(1)}%</TableCell>
+                            <TableCell className="text-right font-mono text-xs">{fmtB(Number(z.under_assessed_value))}</TableCell>
+                            <TableCell className="text-right font-mono text-xs font-medium">
+                              {fmtB(Number(z.imputed_annual_tax_shortfall))}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              )}
             </>
           )}
         </CardContent>
