@@ -33,7 +33,7 @@ import {
   Building2, Search, Target, Scale,
   ClipboardList, AlertTriangle, CheckCircle2,
   TrendingUp, TrendingDown, RefreshCw, Plus, Info, ExternalLink,
-  ArrowLeft,
+  ArrowLeft, BookOpen,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -1285,6 +1285,63 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
   return <ParcelDetailBody data={data as Record<string, any>} />;
 }
 
+function ParcelNarrativePanel({ narrative }: { narrative: Record<string, any> }) {
+  const sections = (narrative.sections as Array<Record<string, any>>) ?? [];
+  const tldr = (narrative.tldr as string[]) ?? [];
+
+  return (
+    <Card className="border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-white shadow-sm">
+      <CardHeader className="py-3 px-4 pb-2">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2 text-amber-950">
+          <BookOpen className="w-4 h-4 text-amber-700" />
+          Plain-English summary
+        </CardTitle>
+        <p className="text-sm font-serif text-slate-900 mt-2 leading-relaxed">
+          {narrative.headline}
+        </p>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 space-y-4">
+        {tldr.length > 0 && (
+          <ul className="space-y-1.5 text-sm text-slate-800 bg-white/80 rounded-lg border border-amber-200 px-4 py-3">
+            {tldr.map((line) => (
+              <li key={line} className="flex items-start gap-2">
+                <span className="text-amber-600 mt-0.5">•</span>
+                <span>{line}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="space-y-4">
+          {sections.map((section) => (
+            <div key={section.id} className="border-t border-amber-100 pt-3 first:border-0 first:pt-0">
+              <h4 className="text-xs font-bold uppercase tracking-wide text-amber-900 mb-2">
+                {section.title}
+              </h4>
+              {section.paragraphs?.map((p: string) => (
+                <p key={p.slice(0, 40)} className="text-sm text-slate-700 leading-relaxed mb-2">
+                  {p}
+                </p>
+              ))}
+              {section.bullets?.length > 0 && (
+                <ul className="space-y-1.5 text-sm text-slate-700 list-disc list-inside">
+                  {section.bullets.map((b: string) => (
+                    <li key={b.slice(0, 48)} className="leading-relaxed">{b}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[10px] text-muted-foreground border-t border-amber-100 pt-3 leading-relaxed">
+          {narrative.disclaimer}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ReappraisalYoYPanel({ yoy }: { yoy: Record<string, any> }) {
   const pct = Number(yoy.change_pct);
   const pctLabel = `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
@@ -1387,6 +1444,7 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
 
   const warnings = (freshness?.warnings as Array<Record<string, string>> | undefined) ?? [];
   const reappraisalYoY = data.reappraisal_yoy as Record<string, any> | null | undefined;
+  const narrative = data.narrative as Record<string, any> | undefined;
 
   return (
     <div className="space-y-5">
@@ -1433,6 +1491,8 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
           )}
         </div>
       </div>
+
+      {narrative && <ParcelNarrativePanel narrative={narrative} />}
 
       {reappraisalYoY && <ReappraisalYoYPanel yoy={reappraisalYoY} />}
 

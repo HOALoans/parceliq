@@ -12,6 +12,7 @@ import { loadPrcForParcel } from "./spatialestPrc.js";
 import { buildSubjectProfile, fetchComparableSales } from "./comparableSales.js";
 import { fetchReappraisalYoY, fetchReappraisalSummary } from "./reappraisalYoY.js";
 import { fetchReappraisalTaxEquity } from "./reappraisalTaxEquity.js";
+import { buildParcelNarrative } from "./parcelNarrative.js";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
 import { EQUITY_SAMPLE_JOIN } from "./equitySampleSql.js";
 
@@ -225,6 +226,16 @@ export const parceliqRouter = router({
         prc,
       });
 
+      const narrative = buildParcelNarrative({
+        address: enriched.SITEADDRESS,
+        pin: enriched.PIN,
+        zip: enriched.POSTAL_CODE,
+        owner: enriched.OWNER,
+        valuation,
+        reappraisalYoY,
+        dataFreshness,
+      });
+
       return {
         ...enriched,
         model_value: valuation.fair_market_value,
@@ -235,6 +246,7 @@ export const parceliqRouter = router({
         valuation,
         data_freshness: dataFreshness,
         reappraisal_yoy: reappraisalYoY,
+        narrative,
         levy_due:    row.levy_due,
         subdivision: row.subdivision,
         township:    row.township,
