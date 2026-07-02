@@ -15,6 +15,7 @@
     "start": "node dist/server/_core/index.js",
     "sync:rod": "node jobs/syncRegisterOfDeeds.mjs",
     "sync:rod:full": "node jobs/syncRegisterOfDeeds.mjs --full-reload",
+    "stripe:listen": "stripe listen --forward-to localhost:10000/webhook/stripe",
     "db:push": "drizzle-kit push",
     "typecheck": "tsc --noEmit"
   },

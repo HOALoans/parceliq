@@ -14,6 +14,16 @@ services:
         value: production
       - key: DATABASE_URL
         sync: false
+      - key: APP_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
 
   - type: cron
     name: parcelogik-rod-sync
