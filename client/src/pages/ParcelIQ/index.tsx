@@ -1,6 +1,6 @@
 import AppealReport, { AppealReportStatusBar } from "./AppealReport";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { trpc } from "../../lib/trpc";           // adjust path to match your trpc client
 import { Button }   from "@/components/ui/button";
 import { Input }    from "@/components/ui/input";
@@ -36,6 +36,40 @@ import {
 import { Link } from "wouter";
 
 const PARCELOGIK_FAIR_VALUE = "Parcelogik Fair Value";
+
+/** County vs fair value: (County − Fair) ÷ Fair × 100. Positive = county higher; negative = county lower. */
+const GAP_TOOLTIP =
+  "How far the county assessed value is from Parcelogik fair value. Formula: (County − Fair) ÷ Fair. A +10% gap means the county value is 10% above our estimate; −10% means it is 10% below.";
+
+function SortableTh({
+  label,
+  active,
+  asc,
+  onClick,
+  className = "",
+  title,
+}: {
+  label: string;
+  active: boolean;
+  asc: boolean;
+  onClick: () => void;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        className={`font-semibold hover:underline ${className.includes("text-right") ? "ml-auto block text-right w-full" : "text-left"}`}
+        onClick={onClick}
+        title={title}
+      >
+        {label}
+        {active ? (asc ? " ↑" : " ↓") : ""}
+      </button>
+    </TableHead>
+  );
+}
 
 // ── nav tabs ─────────────────────────────────────────────────────────
 type Tab = "dashboard" | "explorer" | "revenue" | "equity" | "overrides" | "audit";
@@ -840,11 +874,14 @@ function PrcRecordCard({ prc, taxRollAssessment }: { prc: Record<string, any>; t
 }
 
 function VarianceBadge({ pct }: { pct: number | null }) {
-  if (pct == null) return <Badge variant="outline">—</Badge>;
+  if (pct == null) return <Badge variant="outline" title={GAP_TOOLTIP}>—</Badge>;
   const abs = Math.abs(pct);
-  if (abs > 15) return <Badge variant="destructive">{pct > 0 ? "+" : ""}{pct}%</Badge>;
-  if (abs > 5)  return <Badge className="bg-amber-100 text-amber-800 border-amber-200">{pct > 0 ? "+" : ""}{pct}%</Badge>;
-  return <Badge className="bg-green-100 text-green-800 border-green-200">{pct > 0 ? "+" : ""}{pct}%</Badge>;
+  const label =
+    abs > 999 ? (pct > 0 ? ">+999%" : "<−999%") : `${pct > 0 ? "+" : ""}${pct}%`;
+  const title = `${GAP_TOOLTIP}${abs > 999 ? " (ZIP preview estimate unreliable for this property — open detail for comp-based value)" : ""}`;
+  if (abs > 15) return <Badge variant="destructive" title={title}>{label}</Badge>;
+  if (abs > 5) return <Badge className="bg-amber-100 text-amber-800 border-amber-200" title={title}>{label}</Badge>;
+  return <Badge className="bg-green-100 text-green-800 border-green-200" title={title}>{label}</Badge>;
 }
 
 function alignmentScoreHint(score: number | null): string {
@@ -1308,7 +1345,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                 <TableHead>Owner</TableHead>
                 <TableHead>County Value</TableHead>
                 <TableHead title="Comparable-sales fair value — matches property detail view">{PARCELOGIK_FAIR_VALUE}</TableHead>
-                <TableHead>The Gap</TableHead>
+                <TableHead title={GAP_TOOLTIP}>The Gap</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1641,6 +1678,43 @@ function ExplorerSearchView({
     setSearch(q);
   };
 
+  type ExplorerSortKey =
+    | "PIN"
+    | "SITEADDRESS"
+    | "OWNER"
+    | "CALCACREAGE"
+    | "TOTALVALUE"
+    | "model_value"
+    | "variance_pct"
+    | "equity_score";
+
+  const [sortKey, setSortKey] = useState<ExplorerSortKey>("TOTALVALUE");
+  const [sortAsc, setSortAsc] = useState(false);
+
+  const sortedParcels = useMemo(() => {
+    const list = [...(data?.parcels ?? [])];
+    list.sort((a, b) => {
+      const av = a[sortKey as keyof typeof a];
+      const bv = b[sortKey as keyof typeof b];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "string" && typeof bv === "string") {
+        return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+      }
+      return sortAsc ? Number(av) - Number(bv) : Number(bv) - Number(av);
+    });
+    return list;
+  }, [data?.parcels, sortKey, sortAsc]);
+
+  const toggleSort = (key: ExplorerSortKey) => {
+    if (sortKey === key) setSortAsc(!sortAsc);
+    else {
+      setSortKey(key);
+      setSortAsc(key === "PIN" || key === "SITEADDRESS" || key === "OWNER");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -1686,15 +1760,44 @@ function ExplorerSearchView({
           <Badge className="bg-green-100 text-green-700 text-[10px]">Live GIS</Badge>
         </CardHeader>
         <CardContent className="p-0">
+          <p className="text-xs text-muted-foreground px-4 py-2 border-b bg-slate-50">
+            <strong>The Gap</strong> = (County value − Parcelogik fair value) ÷ fair value.
+            {" "}<span className="text-red-700">+</span> = county assessed <em>higher</em> than our estimate;
+            {" "}<span className="text-blue-700">−</span> = county assessed <em>lower</em>.
+            Click any column header to sort.
+          </p>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>PIN</TableHead><TableHead>Address</TableHead>
-                <TableHead>Owner</TableHead><TableHead>Acres</TableHead>
-                <TableHead>County Value</TableHead>
-                <TableHead title="Comparable-sales fair value — matches property detail view">{PARCELOGIK_FAIR_VALUE}</TableHead>
-                <TableHead>The Gap</TableHead>
-                <TableHead title="How closely county value matches sale evidence (100 = match)">Match</TableHead>
+                <SortableTh label="PIN" active={sortKey === "PIN"} asc={sortAsc} onClick={() => toggleSort("PIN")} />
+                <SortableTh label="Address" active={sortKey === "SITEADDRESS"} asc={sortAsc} onClick={() => toggleSort("SITEADDRESS")} />
+                <SortableTh label="Owner" active={sortKey === "OWNER"} asc={sortAsc} onClick={() => toggleSort("OWNER")} />
+                <SortableTh label="Acres" active={sortKey === "CALCACREAGE"} asc={sortAsc} onClick={() => toggleSort("CALCACREAGE")} className="text-right" />
+                <SortableTh label="County Value" active={sortKey === "TOTALVALUE"} asc={sortAsc} onClick={() => toggleSort("TOTALVALUE")} className="text-right" />
+                <SortableTh
+                  label={PARCELOGIK_FAIR_VALUE}
+                  active={sortKey === "model_value"}
+                  asc={sortAsc}
+                  onClick={() => toggleSort("model_value")}
+                  className="text-right"
+                  title="Comparable-sales fair value — matches property detail view"
+                />
+                <SortableTh
+                  label="The Gap"
+                  active={sortKey === "variance_pct"}
+                  asc={sortAsc}
+                  onClick={() => toggleSort("variance_pct")}
+                  className="text-right"
+                  title={GAP_TOOLTIP}
+                />
+                <SortableTh
+                  label="Match"
+                  active={sortKey === "equity_score"}
+                  asc={sortAsc}
+                  onClick={() => toggleSort("equity_score")}
+                  className="text-right"
+                  title="How closely county value matches sale evidence (100 = close match)"
+                />
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -1713,7 +1816,7 @@ function ExplorerSearchView({
                   </TableCell>
                 </TableRow>
               )}
-              {data?.parcels.map((p) => (
+              {sortedParcels.map((p) => (
                 <TableRow
                   key={p.PIN}
                   className={`${p.flagged ? "bg-red-50/40" : ""} ${detailPin === p.PIN ? "bg-slate-100" : ""}`}
