@@ -10,5 +10,9 @@ export function getStripe(): Stripe {
 }
 
 export function appBaseUrl(): string {
-  return (process.env.APP_URL ?? process.env.PUBLIC_URL ?? "http://localhost:10000").replace(/\/$/, "");
+  let url = (process.env.APP_URL ?? process.env.PUBLIC_URL ?? "http://localhost:10000").trim();
+  if (url && !/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
+  return url.replace(/\/$/, "");
 }
