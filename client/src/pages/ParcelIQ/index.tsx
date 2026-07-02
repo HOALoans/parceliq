@@ -34,6 +34,7 @@ import {
   ArrowLeft, BookOpen, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Link } from "wouter";
+import { ReappraisalCycleCard, ReappraisalEquitySection } from "@/components/BuncombeReappraisalPromo";
 
 const PARCELOGIK_FAIR_VALUE = "Parcelogik Fair Value";
 
@@ -1877,6 +1878,9 @@ function ExplorerSearchView({
         onClassChange={setCls}
         onSearch={runSearch}
       />
+
+      <ReappraisalCycleCard />
+      <ReappraisalEquitySection />
 
       <Card>
         <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">
