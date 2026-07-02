@@ -75,8 +75,8 @@ function SortableTh({
 type Tab = "dashboard" | "explorer" | "revenue" | "equity" | "overrides" | "audit";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "dashboard", label: "Dashboard",       icon: <Building2 className="w-4 h-4" /> },
   { id: "explorer",  label: "Property Search",  icon: <Search className="w-4 h-4" /> },
+  { id: "dashboard", label: "Dashboard",       icon: <Building2 className="w-4 h-4" /> },
   { id: "revenue",   label: "Revenue Targeting",icon: <Target className="w-4 h-4" /> },
   { id: "equity",    label: "Fairness Check",   icon: <Scale className="w-4 h-4" /> },
   { id: "overrides", label: "Overrides",        icon: <ClipboardList className="w-4 h-4" /> },
@@ -906,11 +906,69 @@ function ScorePill({ score }: { score: number | null }) {
   );
 }
 
+function PropertyExplorerSearch({
+  q,
+  classCd,
+  isFetching,
+  onQChange,
+  onClassChange,
+  onSearch,
+}: {
+  q: string;
+  classCd: string;
+  isFetching: boolean;
+  onQChange: (q: string) => void;
+  onClassChange: (classCd: string) => void;
+  onSearch: () => void;
+}) {
+  return (
+    <div className="rounded-xl border-2 border-amber-400 bg-gradient-to-b from-amber-50 via-white to-white p-5 sm:p-6 shadow-md">
+      <h2 className="text-xl sm:text-2xl font-serif font-semibold text-slate-900">Property Explorer</h2>
+      <p className="text-sm text-slate-600 mt-1 mb-4">
+        Live search across Buncombe County&apos;s 112,847 properties.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-700 pointer-events-none" />
+          <Input
+            className="pl-12 h-12 sm:h-14 text-base sm:text-lg border-2 border-slate-300 bg-white shadow-sm focus-visible:border-amber-500 focus-visible:ring-amber-400/30"
+            placeholder="Search address or owner name…"
+            value={q}
+            onChange={(e) => onQChange(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && onSearch()}
+            autoFocus
+          />
+        </div>
+        <Select value={classCd} onValueChange={onClassChange}>
+          <SelectTrigger className="w-full sm:w-44 h-12 sm:h-14 border-2 text-sm">
+            <SelectValue placeholder="All classes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">All classes</SelectItem>
+            <SelectItem value="R">Residential</SelectItem>
+            <SelectItem value="C">Commercial</SelectItem>
+            <SelectItem value="A">Agricultural</SelectItem>
+            <SelectItem value="I">Industrial</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          size="lg"
+          className="h-12 sm:h-14 px-8 bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold text-base shadow-sm shrink-0"
+          onClick={onSearch}
+          disabled={isFetching}
+        >
+          {isFetching ? "Searching…" : "Search"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════════════
 //  MAIN PAGE
 // ════════════════════════════════════════════════════════════════════════
 export default function ParcelogikPage() {
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<Tab>("explorer");
   const [zipSample, setZipSample] = useState<string | null>(null);
   const [explorerPin, setExplorerPin] = useState<string | null>(null);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
@@ -1638,7 +1696,7 @@ function ExplorerSearchView({
   onConsumedInitialPin?: () => void;
   checkoutSessionId?: string | null;
 }) {
-  const [q, setQ]         = useState("");
+  const [q, setQ] = useState("");
   const [classCd, setCls] = useState<string>("");
   const [search, setSearch] = useState("");
   const [detailPin, setDetailPin] = useState<string | null>(null);
@@ -1675,7 +1733,7 @@ function ExplorerSearchView({
 
   const runSearch = () => {
     closeDetail();
-    setSearch(q);
+    setSearch(q.trim());
   };
 
   type ExplorerSortKey =
@@ -1716,40 +1774,15 @@ function ExplorerSearchView({
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Property Explorer</h2>
-        <p className="text-sm text-muted-foreground">Live search across Buncombe County&apos;s 112,847 properties.</p>
-      </div>
-
-      {/* Search bar */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search address or owner name…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runSearch()}
-          />
-        </div>
-        <Select value={classCd} onValueChange={setCls}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="All classes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="">All classes</SelectItem>
-            <SelectItem value="R">Residential</SelectItem>
-            <SelectItem value="C">Commercial</SelectItem>
-            <SelectItem value="A">Agricultural</SelectItem>
-            <SelectItem value="I">Industrial</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button onClick={runSearch} disabled={isFetching}>
-          {isFetching ? "Searching…" : "Search"}
-        </Button>
-      </div>
+    <div className="space-y-5">
+      <PropertyExplorerSearch
+        q={q}
+        classCd={classCd}
+        isFetching={isFetching}
+        onQChange={setQ}
+        onClassChange={setCls}
+        onSearch={runSearch}
+      />
 
       <Card>
         <CardHeader className="py-3 px-4 flex flex-row items-center justify-between">

@@ -10,7 +10,7 @@ import {
   FileSearch,
   Layers,
   MapPin,
-  Handshake,
+  CheckCircle2,
 } from "lucide-react";
 
 type CountyStatus = "live" | "planned";
@@ -26,54 +26,26 @@ type CountyCard = {
   highlights?: { label: string; value: string; sub: string }[];
 };
 
-const FAIR_VALUE_PRIORITY = [
-  {
-    priority: 1,
-    method: "Own qualified sale",
-    when: "The parcel has a recent, arm's-length deed sale on record",
-  },
-  {
-    priority: 2,
-    method: "Comparable sales",
-    when: "Three or more similar sales with strong match (size, type, age) — not a blind ZIP average",
-  },
-  {
-    priority: 3,
-    method: "ZIP sale-ratio estimate",
-    when: "Comps are a weak fit, but the ZIP has enough sale history for a uniformity estimate",
-  },
-  {
-    priority: 4,
-    method: "Property characteristics",
-    when: "Thin sales data — estimated from lot, location, and class benchmarks",
-  },
-  {
-    priority: 5,
-    method: "Limited comps",
-    when: "Last resort when no stronger method is available",
-  },
-] as const;
-
 const DATA_SOURCES = [
   {
-    title: "County property records",
-    detail: "Official land, building, and total values from the assessor's office — the basis for your tax bill.",
+    title: "Live county records",
+    detail: "Spatialest property record cards and tax roll data — land, building, and total appraised values.",
   },
   {
-    title: "Real home sales",
-    detail: "Actual prices from homes bought and sold in the county — the receipts that prove what buyers paid.",
+    title: "Qualified deed sales",
+    detail: "Register of Deeds transactions matched to parcels, powering comparable sales and ZIP equity studies.",
   },
   {
-    title: "Similar home comparisons",
-    detail: "We match sales by size, type, and age in your neighborhood — not a blind average across the whole ZIP.",
+    title: "Parcel-specific comps",
+    detail: "Qualified sales in the same ZIP, matched by square footage, property type, and year built when county data allows — not a blind ZIP-wide ratio.",
   },
   {
-    title: "Value review cycles",
-    detail: "When a county publishes prior-cycle and current-cycle values, we show the change home by home.",
+    title: "2026 reappraisal cycle",
+    detail: "2021 tax roll baseline vs. 2026 county reappraisal values — parcel by parcel and ZIP by ZIP, for uniformity analysis across the cycle.",
   },
   {
-    title: "Neighborhood price trends",
-    detail: "Regional market trackers show how fast prices are moving in your area — kept separate from the headline numbers.",
+    title: "Metro trend context",
+    detail: "Regional price indices for time-adjusting older sales — clearly separated from headline estimates.",
   },
 ];
 
@@ -152,7 +124,7 @@ export default function LandingPage() {
               Parcel<span className="text-amber-400">ogik</span>
               <span className="text-slate-400 font-sans text-sm font-normal">.com</span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5">Transparent property assessment, built with assessors</p>
+            <p className="text-xs text-slate-400 mt-0.5">Property assessment intelligence</p>
           </div>
           <a href="#counties">
             <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold">
@@ -166,82 +138,86 @@ export default function LandingPage() {
       <section className="bg-slate-900 text-white px-6 py-16 sm:py-20">
         <div className="max-w-3xl mx-auto text-center space-y-6">
           <p className="text-amber-400 text-sm font-medium uppercase tracking-widest">
-            What changed · Why it changed · How does it compare?
+            Fair assessments · Funded communities
           </p>
           <h2 className="text-3xl sm:text-4xl font-serif font-semibold leading-tight tracking-tight">
-            Clear answers from the same data assessors use.
+            Real estate value is only proven when a buyer and seller agree on a price.
           </h2>
           <p className="text-slate-300 text-lg leading-relaxed">
-            Parcelogik helps property owners understand county values — what changed in the latest
-            review, how market trends factor in, and how a specific home compares to countywide
-            benchmarks. One platform, county by county.
+            Everything else — county assessments, automated estimates, appraisal models — is an
+            informed guess. Parcelogik doesn&apos;t pretend one number is the truth. We bring
+            multiple independent sources together, show our work, and let you see where the county,
+            the market, and equity fairness diverge.
           </p>
           <div className="flex flex-wrap justify-center gap-3 pt-2">
             <a href="#counties">
               <Button size="lg" className="bg-amber-500 hover:bg-amber-600 text-slate-900 font-semibold">
-                Choose your county
+                Explore Buncombe County
               </Button>
             </a>
           </div>
         </div>
       </section>
 
-      {/* Assessor partnership */}
+      {/* Problem / insight */}
       <section className="px-6 py-14 max-w-5xl mx-auto w-full">
-        <div className="rounded-xl border-2 border-slate-200 bg-white p-8 sm:p-10 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <Handshake className="w-6 h-6 text-amber-700" />
+        <div className="grid md:grid-cols-2 gap-10 items-start">
+          <div className="space-y-4">
             <h3 className="text-2xl font-serif font-semibold text-slate-900">
-              Built to support assessor offices
+              The old way: one number, opaque sources
             </h3>
+            <p className="text-slate-600 leading-relaxed">
+              Appraisers, assessors, and automated estimators have always relied on data that can be
+              stale, incomplete, or averaged across unlike properties. A single &ldquo;fair
+              value&rdquo; on a spreadsheet hides the assumptions — and in mixed neighborhoods
+              (especially downtown commercial districts), one ZIP-wide ratio can be wildly wrong for
+              an individual parcel.
+            </p>
+            <p className="text-slate-600 leading-relaxed">
+              Property tax equity matters too: are assessments applied <em>uniformly</em> across
+              owners, or does one ZIP get a break another doesn&apos;t? That&apos;s a different
+              question than &ldquo;what would this house sell for today?&rdquo;
+            </p>
           </div>
-          <p className="text-slate-700 leading-relaxed text-lg">
-            Property assessment is a demanding public service. Assessor offices must value tens of
-            thousands of properties using consistent rules, public records, and periodic market
-            updates — often with limited staff and constant public scrutiny.
-          </p>
-          <p className="text-slate-700 leading-relaxed mt-4">
-            Parcelogik is designed as a <strong>transparency layer</strong>, not a replacement. We
-            surface the same county records, deed sales, and review-cycle data assessors rely on,
-            explained in plain language so owners can see <em>what</em> changed, <em>why</em> it
-            changed, and <em>how</em> their home compares to county benchmarks.
-          </p>
-        </div>
-      </section>
-
-      {/* Three questions */}
-      <section className="bg-white border-y px-6 py-14">
-        <div className="max-w-5xl mx-auto grid md:grid-cols-3 gap-8">
-          {[
-            {
-              title: "What changed?",
-              text: "See what the county said your home was worth in the prior cycle vs. the current review — in dollars and plain percentages.",
-            },
-            {
-              title: "Why did it change?",
-              text: "We connect the assessor's updated values to market trends, so owners can follow the logic behind a value review.",
-            },
-            {
-              title: "How does it compare?",
-              text: "See how your home's change lines up with the county median and your neighborhood — the same benchmarks assessors use for uniformity.",
-            },
-          ].map(({ title, text }) => (
-            <div key={title} className="space-y-2">
-              <h4 className="text-lg font-semibold text-slate-900">{title}</h4>
-              <p className="text-sm text-slate-600 leading-relaxed">{text}</p>
-            </div>
-          ))}
+          <div className="space-y-4">
+            <h3 className="text-2xl font-serif font-semibold text-slate-900">
+              The Parcelogik way: transparency, not false precision
+            </h3>
+            <p className="text-slate-600 leading-relaxed">
+              We don&apos;t remove judgment from valuation — we make the evidence visible. For each
+              parcel you see the <strong>county assessment</strong>, a <strong>market estimate</strong>{" "}
+              built from parcel-specific sales and comps (not a blind ratio extrapolation), and a
+              separate <strong>equity study</strong> for uniformity analysis. We pick the best
+              market method by priority; we don&apos;t blend unrelated numbers into one magic figure.
+            </p>
+            <ul className="space-y-2 text-sm text-slate-700">
+              {[
+                "County record vs. market estimate vs. variance — at a glance",
+                "2021 baseline vs. 2026 reappraisal on every matched parcel",
+                "Comps matched by sq ft, property type, and year built",
+                "Separate ZIP equity metrics from market appraisal",
+                "Live Spatialest PRC when available",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
       {/* Data sources */}
-      <section className="px-6 py-14 max-w-5xl mx-auto w-full">
-        <div className="text-center mb-10">
-          <h3 className="text-2xl font-serif font-semibold">Where we get the numbers</h3>
-          <p className="text-muted-foreground mt-2 max-w-2xl mx-auto">
-            Multiple sources, each with a clear role — presented openly, not collapsed into one headline number.
-          </p>
-        </div>
+      <section className="bg-white border-y px-6 py-14">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <h3 className="text-2xl font-serif font-semibold">What we use</h3>
+            <p className="text-muted-foreground mt-2 max-w-2xl mx-auto">
+              Multiple lenses on the same parcel — each with a defined role, none hidden behind a
+              single headline number.
+            </p>
+          </div>
         <div className="grid sm:grid-cols-2 gap-4">
           {DATA_SOURCES.map((s) => (
             <Card key={s.title} className="border-slate-200">
@@ -257,76 +233,24 @@ export default function LandingPage() {
             </Card>
           ))}
         </div>
-      </section>
-
-      {/* Fair value methodology */}
-      <section className="bg-white border-y px-6 py-14">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-8">
-            <h3 className="text-2xl font-serif font-semibold text-slate-900">
-              How Parcelogik Fair Value is chosen
-            </h3>
-            <p className="text-muted-foreground mt-2 max-w-2xl mx-auto leading-relaxed">
-              We pick a single best-supported estimate — we do not blend or average methods.
-              Parcelogik Fair Value is an analytical tool, not a certified appraisal or listing price.
-            </p>
-          </div>
-          <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-left">
-                  <th className="px-4 py-3 font-semibold text-slate-700 w-16">Priority</th>
-                  <th className="px-4 py-3 font-semibold text-slate-700">Method</th>
-                  <th className="px-4 py-3 font-semibold text-slate-700">When it wins</th>
-                </tr>
-              </thead>
-              <tbody>
-                {FAIR_VALUE_PRIORITY.map((row, i) => (
-                  <tr
-                    key={row.priority}
-                    className={i % 2 === 0 ? "bg-white" : "bg-slate-50/60"}
-                  >
-                    <td className="px-4 py-3 font-mono text-amber-800 font-semibold">
-                      {row.priority}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{row.method}</td>
-                    <td className="px-4 py-3 text-slate-600 leading-relaxed">{row.when}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4 text-center max-w-2xl mx-auto leading-relaxed">
-            When comparable sales are only a loose ZIP-wide match with poor similarity, we do not
-            anchor on that median — we step down to the ZIP sale-ratio estimate or characteristics
-            model instead of presenting a misleading comp number.
-          </p>
         </div>
       </section>
 
-      {/* How Parcelogik does the math */}
+      {/* How market estimate works */}
       <section className="px-6 py-14 max-w-5xl mx-auto w-full">
         <div className="rounded-xl border-2 border-slate-800 bg-slate-900 text-white p-8 sm:p-10">
           <h3 className="text-xl font-serif font-semibold text-amber-300 mb-4">
-            How Parcelogik does the math
+            How we choose a market estimate
           </h3>
-          <ol className="space-y-5">
+          <p className="text-slate-300 leading-relaxed mb-6">
+            We use a <strong className="text-white">priority ladder</strong>, not a weighted average.
+            The first method with enough evidence wins:
+          </p>
+          <ol className="space-y-4">
             {[
-              {
-                n: 1,
-                title: "We look at real sales",
-                sub: "Actual deed prices from homes bought and sold in the county — the strongest market evidence.",
-              },
-              {
-                n: 2,
-                title: "We check neighborhood trends",
-                sub: "Regional market trackers show how fast prices are moving in your area — separate from the headline estimate.",
-              },
-              {
-                n: 3,
-                title: "We compare review cycles",
-                sub: "Prior-cycle vs. current-cycle county values show how growth was distributed across the jurisdiction.",
-              },
+              { n: 1, title: "This parcel's qualified sale", sub: "Strongest — verified transaction on this PIN" },
+              { n: 2, title: "Nearby comparable sales", sub: "Median of qualified sales matched by size, property type, and age in the same ZIP" },
+              { n: 3, title: "Property characteristics", sub: "Fallback from lot, location, and class when sales are thin" },
             ].map(({ n, title, sub }) => (
               <li key={n} className="flex gap-4 items-start">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-400 text-slate-900 font-bold text-sm">
@@ -339,23 +263,37 @@ export default function LandingPage() {
               </li>
             ))}
           </ol>
+          <p className="text-xs text-slate-500 mt-6 border-t border-slate-700 pt-4">
+            ZIP-wide ratio extrapolation is shown separately for equity / uniformity analysis — it
+            is not substituted for the market estimate.
+          </p>
         </div>
       </section>
 
-      {/* Value review feature — generic */}
+      {/* Reappraisal cycle */}
       <section className="bg-indigo-50 border-y border-indigo-100 px-6 py-14">
         <div className="max-w-5xl mx-auto">
           <h3 className="text-2xl font-serif font-semibold text-slate-900 mb-3">
-            Value review cycles, explained
+            2021 → 2026 reappraisal equity
           </h3>
           <p className="text-slate-600 leading-relaxed max-w-3xl mb-6">
-            When a county completes a periodic reassessment, Parcelogik maps each property from the
-            prior cycle to the new values. Owners see Then vs. Now for their home and how that change
-            compares to county and neighborhood medians — the same uniformity lens assessors use.
+            Buncombe&apos;s 2026 reappraisal is live in Parcelogik. Compare the prior-cycle tax roll to
+            the new county file for any parcel, and see how your neighborhood&apos;s median increase
+            compares to the county — a separate lens from market value or deed-sale equity.
           </p>
-          <p className="text-sm text-indigo-900/80">
-            Live counties show real numbers on their dashboard. More jurisdictions are onboarding.
-          </p>
+          <div className="grid sm:grid-cols-3 gap-4 text-center">
+            {[
+              { label: "Matched parcels", value: "112k+", sub: "2021 & 2026 on file" },
+              { label: "County median increase", value: "+61%", sub: "Across matched parcels" },
+              { label: "ZIP spread", value: "28 pts", sub: "Lowest vs. highest median ZIP" },
+            ].map(({ label, value, sub }) => (
+              <div key={label} className="rounded-lg border border-indigo-200 bg-white p-5">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+                <p className="text-2xl font-serif font-semibold mt-1 text-indigo-950">{value}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">{sub}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -433,9 +371,9 @@ export default function LandingPage() {
       <section className="bg-slate-100 px-6 py-12 border-t">
         <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-6 text-center">
           {[
-            { icon: Scale, title: "Fairness check", text: "Is everyone being treated the same across neighborhoods?" },
-            { icon: FileSearch, title: "Appeal support", text: "Compare your county value to real sales evidence." },
-            { icon: Building2, title: "Policy & budgets", text: "Track how value reviews affect owners ZIP by ZIP." },
+            { icon: Scale, title: "Equity analysis", text: "Are assessments uniform across ZIPs and property types?" },
+            { icon: FileSearch, title: "Appeal support", text: "Compare your assessment to comps and market evidence." },
+            { icon: Building2, title: "Policy & revenue", text: "Track reappraisal impacts ZIP by ZIP — who bore the largest assessment increases." },
           ].map(({ icon: Icon, title, text }) => (
             <div key={title} className="space-y-2">
               <Icon className="w-8 h-8 mx-auto text-amber-600" />
@@ -448,7 +386,7 @@ export default function LandingPage() {
 
       <footer className="bg-slate-900 text-slate-400 px-6 py-8 text-center text-xs">
         <p>
-          Parcelogik.com · Transparent assessment data · Not a licensed appraisal ·{" "}
+          Parcelogik.com · Property assessment intelligence · Not a licensed appraisal ·{" "}
           <a href="#counties" className="text-amber-400 hover:underline">
             Counties
           </a>
