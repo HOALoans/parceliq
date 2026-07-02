@@ -1750,7 +1750,11 @@ function ExplorerSearchView({
             </Button>
           </CardHeader>
           <CardContent className="px-4 pb-6">
-            <ParcelDetailFetcher key={detailPin} pin={detailPin} />
+            <ParcelDetailFetcher
+              key={detailPin}
+              pin={detailPin}
+              checkoutSessionId={checkoutSessionId}
+            />
           </CardContent>
         </Card>
         </div>
