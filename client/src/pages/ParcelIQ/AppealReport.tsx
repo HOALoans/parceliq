@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Download, Loader2, CheckCircle2, Mail } from "lucide-react";
+import { FileText, Download, Loader2, CheckCircle2 } from "lucide-react";
 
 function fmt(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -26,6 +26,64 @@ type AppealReportProps = {
   compCount?: number;
   checkoutSessionId?: string | null;
 };
+
+/** Sticky top bar after Stripe checkout — download + generating state. */
+export function AppealReportStatusBar({ sessionId }: { sessionId: string }) {
+  const statusQuery = trpc.report.getReportStatus.useQuery(
+    { sessionId },
+    {
+      refetchInterval: (data) =>
+        data?.status === "sent" || data?.status === "failed" ? false : 3000,
+    },
+  );
+
+  const paid =
+    statusQuery.data?.status === "sent" ||
+    statusQuery.data?.status === "generated" ||
+    statusQuery.data?.paymentStatus === "paid";
+  const downloadUrl = statusQuery.data?.downloadUrl;
+
+  if (statusQuery.isLoading) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 flex items-center gap-2 text-sm text-muted-foreground shadow-sm">
+        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+        Confirming payment and generating your appeal report…
+      </div>
+    );
+  }
+
+  if (paid && downloadUrl) {
+    return (
+      <div className="rounded-lg border-2 border-green-500 bg-green-50 px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+        <div className="flex items-start gap-2 text-green-900">
+          <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">Your appeal report is ready</p>
+            <p className="text-sm text-green-800 mt-0.5">
+              Payment confirmed. Download your 6-page PDF below.
+            </p>
+          </div>
+        </div>
+        <Button asChild size="lg" className="bg-green-700 hover:bg-green-800 shrink-0">
+          <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+            <Download className="w-4 h-4 mr-2" />
+            Download PDF Report
+          </a>
+        </Button>
+      </div>
+    );
+  }
+
+  if (statusQuery.data?.status === "failed") {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        Report generation failed. Contact support with your payment confirmation.
+      </div>
+    );
+  }
+
+  return null;
+}
 
 export default function AppealReport({
   pin,
@@ -78,42 +136,11 @@ export default function AppealReport({
   const downloadUrl = statusQuery.data?.downloadUrl;
 
   if (sessionId && paid && downloadUrl) {
-    return (
-      <Card className="border-2 border-green-500 bg-green-50/40">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg font-serif flex items-center gap-2 text-green-900">
-            <CheckCircle2 className="w-5 h-5" />
-            Your appeal report is ready
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-green-900 leading-relaxed">
-            Payment confirmed. Your 6-page Buncombe County appeal evidence report has been generated
-            and emailed to you.
-          </p>
-          <Button asChild className="bg-green-700 hover:bg-green-800">
-            <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
-              <Download className="w-4 h-4 mr-2" />
-              Download PDF Report
-            </a>
-          </Button>
-          <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <Mail className="w-3 h-3" /> A copy was also sent to your email.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    return null;
   }
 
-  if (sessionId && statusQuery.isLoading) {
-    return (
-      <Card className="border border-slate-200">
-        <CardContent className="py-8 flex items-center justify-center gap-2 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          Confirming payment and generating your report…
-        </CardContent>
-      </Card>
-    );
+  if (sessionId && (statusQuery.isLoading || (paid && !downloadUrl))) {
+    return null;
   }
 
   return (

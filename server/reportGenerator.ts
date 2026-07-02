@@ -4,9 +4,17 @@ import puppeteer from "puppeteer";
 import type { Pool } from "pg";
 import { BUNCOMBE_ZIPS } from "./buncombeZips.js";
 import { EFFECTIVE_ASSESSED_SQL } from "./equitySampleSql.js";
+import { fetchReappraisalYoY } from "./reappraisalYoY.js";
 
 const COUNTY_MEDIAN_CHANGE_PCT = 61.3;
 const REPORTS_DIR = "/tmp/reports";
+
+function formatReportDate(value: unknown): string {
+  if (value == null || value === "") return "—";
+  const dt = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 export type ReportData = {
   reportId: string;
@@ -70,14 +78,7 @@ export async function fetchReportData(pool: Pool, pin: string, reportId: string)
   const zip = String(parcel.postal_code ?? "");
   const assessed = Number(parcel.prc_total_value ?? parcel.total_value ?? 0);
 
-  const yoyRes = await pool.query(
-    `SELECT value_2021, value_2026, change_amt, change_pct, zipcode, vs_zip_median_pts,
-            zip_median_change_pct, county_median_change_pct
-     FROM parceliq_yoy_change WHERE pin = $1 LIMIT 1`,
-    [String(parcel.pin)],
-  ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
-
-  const yoy = yoyRes.rows[0] as Record<string, unknown> | undefined;
+  const yoy = await fetchReappraisalYoY(pool, String(parcel.pin));
 
   const zipEquityRes = await pool.query(
     `SELECT zip_code, zip_name, median_ratio, sample_count, avg_assessed, avg_sale_price
@@ -117,12 +118,17 @@ export async function fetchReportData(pool: Pool, pin: string, reportId: string)
       ? Math.round(impliedFairValue * appreciationFactor)
       : null;
 
-  const value2026 = yoy?.value_2026 != null
-    ? Number(yoy.value_2026)
-    : Number(parcel.prc_total_value ?? parcel.total_value ?? 0);
-  const value2021 = yoy?.value_2021 != null ? Number(yoy.value_2021) : null;
-  const changePct = yoy?.change_pct != null ? Number(yoy.change_pct) : null;
-  const vsZip = yoy?.vs_zip_median_pts != null ? Number(yoy.vs_zip_median_pts) : null;
+  const value2026 = yoy?.value_2026 ?? Number(parcel.prc_total_value ?? parcel.total_value ?? 0);
+  const value2021 = yoy?.value_2021 ?? null;
+  const changeAmt =
+    yoy?.change_amt ??
+    (value2021 != null && value2026 ? value2026 - value2021 : null);
+  const changePct =
+    yoy?.change_pct ??
+    (value2021 != null && value2021 > 0 && value2026
+      ? +(((value2026 - value2021) / value2021) * 100).toFixed(1)
+      : null);
+  const vsZip = yoy?.vs_zip_median_pts ?? null;
 
   let verdict = "Your assessment change appears in line with county and ZIP benchmarks.";
   if (vsZip != null && vsZip > 10) {
@@ -151,13 +157,11 @@ export async function fetchReportData(pool: Pool, pin: string, reportId: string)
     zipName: BUNCOMBE_ZIPS[zip] || String(zipEq?.zip_name ?? zip),
     value2021,
     value2026,
-    changeAmt: yoy?.change_amt != null ? Number(yoy.change_amt) : null,
+    changeAmt,
     changePct,
     vsZipMedianPts: vsZip,
-    zipMedianChangePct: yoy?.zip_median_change_pct != null ? Number(yoy.zip_median_change_pct) : null,
-    countyMedianChangePct: yoy?.county_median_change_pct != null
-      ? Number(yoy.county_median_change_pct)
-      : COUNTY_MEDIAN_CHANGE_PCT,
+    zipMedianChangePct: yoy?.zip_median_change_pct ?? null,
+    countyMedianChangePct: yoy?.county_median_change_pct ?? COUNTY_MEDIAN_CHANGE_PCT,
     verdict,
     zipMedianRatio,
     zipSampleCount: zipEq?.sample_count != null ? Number(zipEq.sample_count) : null,
@@ -172,7 +176,7 @@ export async function fetchReportData(pool: Pool, pin: string, reportId: string)
       const ass = Number(r.assessed ?? 0);
       return {
         address: String(r.address ?? "—"),
-        sellDate: r.sell_date ? String(r.sell_date).slice(0, 10) : "—",
+        sellDate: formatReportDate(r.sell_date),
         salePrice: sale,
         assessed: ass,
         ratioPct: sale > 0 ? +((ass / sale) * 100).toFixed(1) : 0,
@@ -183,12 +187,12 @@ export async function fetchReportData(pool: Pool, pin: string, reportId: string)
 
 function reportStyles(): string {
   return `
-    @page { size: letter; margin: 0.55in 0.6in; }
+    @page { size: letter; margin: 0; }
     * { box-sizing: border-box; }
     body { font-family: Georgia, 'Times New Roman', serif; color: #1e293b; font-size: 11pt; line-height: 1.45; margin: 0; }
-    .page { page-break-after: always; min-height: 9.5in; position: relative; }
+    .page { page-break-after: always; min-height: 11in; position: relative; padding: 0.55in 0.6in 0.75in; }
     .page:last-child { page-break-after: auto; }
-    .header { background: #0f172a; color: #fff; padding: 22px 28px; margin: -0.55in -0.6in 24px -0.6in; }
+    .header { background: #0f172a; color: #fff; padding: 22px 28px; margin: -0.55in -0.6in 24px; }
     .header h1 { margin: 0; font-size: 22pt; font-weight: 600; letter-spacing: -0.02em; }
     .header h1 span { color: #fbbf24; }
     .header .sub { color: #94a3b8; font-size: 9pt; margin-top: 6px; font-family: Arial, sans-serif; }
@@ -207,7 +211,7 @@ function reportStyles(): string {
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     ol.steps { padding-left: 20px; }
     ol.steps li { margin-bottom: 10px; }
-    .footer { position: absolute; bottom: 0; left: 0; right: 0; font-size: 8pt; color: #94a3b8; font-family: Arial, sans-serif; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+    .footer { position: absolute; bottom: 0.35in; left: 0.6in; right: 0.6in; font-size: 8pt; color: #94a3b8; font-family: Arial, sans-serif; border-top: 1px solid #e2e8f0; padding-top: 8px; }
     .disclaimer { font-size: 8.5pt; color: #64748b; line-height: 1.4; }
     .badge { display: inline-block; background: #fbbf24; color: #0f172a; font-size: 8pt; font-weight: 700; padding: 2px 8px; border-radius: 4px; font-family: Arial, sans-serif; }
   `;
@@ -305,7 +309,7 @@ export function buildReportHtml(data: ReportData): string {
       <div class="sub">Regional appreciation context (ZHVI)</div>
     </div>
     <h2>4. Market Trend Adjustment</h2>
-    <p>Asheville metro home values (Zillow Home Value Index) rose approximately <strong>+${appPct}%</strong> since ${esc(data.zillowBaseDate ?? "Jan 2021")} per Zillow Research data synced in Parcelogik.</p>
+    <p>Asheville metro home values (Zillow Home Value Index) rose approximately <strong>+${appPct}%</strong> since ${esc(formatReportDate(data.zillowBaseDate ?? "2021-01-01"))} per Zillow Research data synced in Parcelogik.</p>
     <div class="grid">
       <div class="stat"><label>Ratio-implied base value</label><div class="val">${money(data.impliedFairValue)}</div></div>
       <div class="stat"><label>Zillow-adjusted estimate</label><div class="val">${money(data.zillowAdjustedValue)}</div></div>
@@ -328,7 +332,7 @@ export function buildReportHtml(data: ReportData): string {
       <li><strong>Gather evidence</strong> — Attach this report, qualified comparable sales, photos, and any recent appraisal or listing data.</li>
       <li><strong>File informally first</strong> — Contact Buncombe County Tax Assessment or use the online portal to request a review with the assessor's office.</li>
       <li><strong>Board of Equalization &amp; Review</strong> — If informal review is unsuccessful, appeal to the Board of Equalization and Review (BER) by the published deadline.</li>
-      <li><strong>Present your case clearly</strong> — Focus on market evidence: "My assessment of ${money(data.value2026)} exceeds qualified sales of similar properties" or "My increase of ${pct(data.changePct)} exceeds my ZIP median of ${pct(data.zipMedianChangePct)}."</li>
+      <li><strong>Present your case clearly</strong> — Focus on market evidence: "My assessment of ${money(data.value2026)} exceeds qualified sales of similar properties"${data.changePct != null && data.zipMedianChangePct != null ? ` or "My increase of ${pct(data.changePct)} exceeds my ZIP median of ${pct(data.zipMedianChangePct)}."` : "."}</li>
       <li><strong>Submit forms</strong> — Use the county appeal resources at <strong>https://tax.buncombenc.gov</strong> (Appeals &amp; Exemptions section).</li>
     </ol>
     <div class="footer">Parcelogik.com · Page 5 of 6</div>

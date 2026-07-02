@@ -1,4 +1,4 @@
-import AppealReport from "./AppealReport";
+import AppealReport, { AppealReportStatusBar } from "./AppealReport";
 
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "../../lib/trpc";           // adjust path to match your trpc client
@@ -953,6 +953,11 @@ export default function ParcelogikPage() {
 
       {/* Content */}
       <div className="flex-1 p-6">
+        {checkoutSessionId && tab === "explorer" && (
+          <div className="mb-4">
+            <AppealReportStatusBar sessionId={checkoutSessionId} />
+          </div>
+        )}
         {tab === "dashboard"  && <DashboardTab onOpenZip={openZipSample} />}
         {tab === "explorer"   && (
           <ExplorerTab
