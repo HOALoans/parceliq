@@ -71,6 +71,54 @@ function SortableTh({
   );
 }
 
+const COLLAPSED_ROWS = 5;
+
+function useCollapsedList<T>(items: T[], limit = COLLAPSED_ROWS, resetKey?: unknown) {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    setExpanded(false);
+  }, [resetKey]);
+  const hasMore = items.length > limit;
+  const visible = expanded ? items : items.slice(0, limit);
+  const toggle = () => setExpanded((e) => !e);
+  return { visible, expanded, toggle, hasMore, total: items.length, limit };
+}
+
+function ListExpandBar({
+  expanded,
+  onToggle,
+  total,
+  limit = COLLAPSED_ROWS,
+}: {
+  expanded: boolean;
+  onToggle: () => void;
+  total: number;
+  limit?: number;
+}) {
+  if (total <= limit) return null;
+  return (
+    <div className="border-t bg-slate-50 px-4 py-2.5 text-center">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="text-sm font-medium text-amber-800 hover:text-amber-950 hover:underline inline-flex items-center gap-1.5"
+      >
+        {expanded ? (
+          <>
+            Show less
+            <ChevronUp className="w-4 h-4" />
+          </>
+        ) : (
+          <>
+            Show all {total.toLocaleString()} rows
+            <ChevronDown className="w-4 h-4" />
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
 // ── nav tabs ─────────────────────────────────────────────────────────
 type Tab = "dashboard" | "explorer" | "revenue" | "equity" | "overrides" | "audit";
 
@@ -498,10 +546,14 @@ function SalePriceEstimateSection({
   verdictStyles: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const comparableSales = v?.comparable_sales ?? [];
+  const nearbyComps = v?.nearby_comps ?? [];
+  const salesList = useCollapsedList(comparableSales);
+  const compsList = useCollapsedList(nearbyComps);
   const hasSaleContent =
     fairValue != null ||
-    (v?.comparable_sales?.length ?? 0) > 0 ||
-    (v?.nearby_comps?.length ?? 0) > 0;
+    comparableSales.length > 0 ||
+    nearbyComps.length > 0;
 
   if (!hasSaleContent) {
     return (
@@ -600,7 +652,7 @@ function SalePriceEstimateSection({
             <p className="text-sm text-slate-600 leading-relaxed">{marketEstimateExplainer(v)}</p>
             <MarketEstimatePriorityPanel marketEst={marketEst} fairValue={fairValue} />
 
-            {v?.comparable_sales?.length > 0 && (
+            {comparableSales.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   This home&apos;s recent sales
@@ -614,7 +666,7 @@ function SalePriceEstimateSection({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {v.comparable_sales.map((sale: Record<string, any>, i: number) => {
+                    {salesList.visible.map((sale: Record<string, any>, i: number) => {
                       const ratio = assessed && sale.selling_price
                         ? (assessed / sale.selling_price) * 100
                         : null;
@@ -630,10 +682,15 @@ function SalePriceEstimateSection({
                     })}
                   </TableBody>
                 </Table>
+                <ListExpandBar
+                  expanded={salesList.expanded}
+                  onToggle={salesList.toggle}
+                  total={salesList.total}
+                />
               </div>
             )}
 
-            {v?.nearby_comps?.length > 0 && (
+            {nearbyComps.length > 0 && (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -663,7 +720,7 @@ function SalePriceEstimateSection({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {v.nearby_comps.map((comp: Record<string, any>, i: number) => (
+                    {compsList.visible.map((comp: Record<string, any>, i: number) => (
                       <TableRow key={i}>
                         <TableCell className="text-sm max-w-[160px] truncate">{comp.address ?? "—"}</TableCell>
                         <TableCell className="text-sm">{fmtDate(comp.sell_date)}</TableCell>
@@ -674,6 +731,11 @@ function SalePriceEstimateSection({
                     ))}
                   </TableBody>
                 </Table>
+                <ListExpandBar
+                  expanded={compsList.expanded}
+                  onToggle={compsList.toggle}
+                  total={compsList.total}
+                />
               </div>
             )}
 
@@ -1125,6 +1187,10 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
     { label: "Big Gaps",           value: "4,219",    sub: "Homes ±15% off from sales",      color: "border-t-red-500" },
   ];
 
+  const zipRatioList = useCollapsedList(zipRatios);
+  const reappraisalZipList = useCollapsedList(reappraisal?.zips ?? []);
+  const taxEquityZipList = useCollapsedList(reappraisal?.tax_equity?.zips ?? []);
+
   return (
     <div className="space-y-6">
       <Card className="border border-amber-200 bg-amber-50/40">
@@ -1198,7 +1264,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {zipRatios.map((z) => {
+                  {zipRatioList.visible.map((z) => {
                     const status = zipEquityRatioStatus(z.ratio);
                     return (
                       <TableRow key={z.zip} className="bg-white/60">
@@ -1219,6 +1285,11 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                   })}
                 </TableBody>
               </Table>
+              <ListExpandBar
+                expanded={zipRatioList.expanded}
+                onToggle={zipRatioList.toggle}
+                total={zipRatioList.total}
+              />
             </>
           )}
         </CardContent>
@@ -1248,6 +1319,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                 Search any address in Property Search to see its Then vs. Now breakdown.
               </p>
               {reappraisal.zips.length > 0 && (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-white/80 hover:bg-white/80">
@@ -1258,7 +1330,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {reappraisal.zips.map((z) => (
+                    {reappraisalZipList.visible.map((z) => (
                       <TableRow key={z.zip} className="bg-white/60">
                         <TableCell>
                           <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-xs" />
@@ -1272,6 +1344,12 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                     ))}
                   </TableBody>
                 </Table>
+                <ListExpandBar
+                  expanded={reappraisalZipList.expanded}
+                  onToggle={reappraisalZipList.toggle}
+                  total={reappraisalZipList.total}
+                />
+                </>
               )}
 
               {reappraisal.tax_equity && (
@@ -1329,6 +1407,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                   </p>
 
                   {reappraisal.tax_equity.zips.length > 0 && (
+                    <>
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-indigo-50/80 hover:bg-indigo-50/80">
@@ -1341,7 +1420,7 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {reappraisal.tax_equity.zips.map((z: Record<string, number | string>) => (
+                        {taxEquityZipList.visible.map((z: Record<string, number | string>) => (
                           <TableRow key={String(z.zip)}>
                             <TableCell>
                               <ZipLink zip={String(z.zip)} onOpenZip={onOpenZip} className="text-xs" />
@@ -1362,6 +1441,12 @@ function DashboardTab({ onOpenZip }: { onOpenZip: (zip: string) => void }) {
                         ))}
                       </TableBody>
                     </Table>
+                    <ListExpandBar
+                      expanded={taxEquityZipList.expanded}
+                      onToggle={taxEquityZipList.toggle}
+                      total={taxEquityZipList.total}
+                    />
+                    </>
                   )}
                 </div>
               )}
@@ -1497,6 +1582,8 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
     });
   };
 
+  const sampleList = useCollapsedList(data?.parcels ?? [], COLLAPSED_ROWS, `${zip}-${sort}`);
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
@@ -1592,7 +1679,7 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
                   </TableCell>
                 </TableRow>
               )}
-              {data?.parcels.map((p) => (
+              {sampleList.visible.map((p) => (
                 <TableRow key={p.pin} className={p.ratio < 0.7 ? "bg-amber-50/50" : ""}>
                   <TableCell className="text-sm font-medium max-w-[200px]">
                     <div className="truncate">{p.address || "—"}</div>
@@ -1629,6 +1716,11 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
               ))}
             </TableBody>
           </Table>
+          <ListExpandBar
+            expanded={sampleList.expanded}
+            onToggle={sampleList.toggle}
+            total={sampleList.total}
+          />
         </CardContent>
       </Card>
 
@@ -1773,6 +1865,8 @@ function ExplorerSearchView({
     }
   };
 
+  const parcelList = useCollapsedList(sortedParcels, COLLAPSED_ROWS, search);
+
   return (
     <div className="space-y-5">
       <PropertyExplorerSearch
@@ -1849,7 +1943,7 @@ function ExplorerSearchView({
                   </TableCell>
                 </TableRow>
               )}
-              {sortedParcels.map((p) => (
+              {parcelList.visible.map((p) => (
                 <TableRow
                   key={p.PIN}
                   className={`${p.flagged ? "bg-red-50/40" : ""} ${detailPin === p.PIN ? "bg-slate-100" : ""}`}
@@ -1875,6 +1969,11 @@ function ExplorerSearchView({
               ))}
             </TableBody>
           </Table>
+          <ListExpandBar
+            expanded={parcelList.expanded}
+            onToggle={parcelList.toggle}
+            total={parcelList.total}
+          />
         </CardContent>
       </Card>
 
@@ -2545,6 +2644,8 @@ function EquityTab({
   const sortIndicator = (key: SortKey) =>
     sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
 
+  const zipTable = useCollapsedList(sortedZips, COLLAPSED_ROWS);
+
   return (
     <div className="space-y-4">
       <div>
@@ -2619,7 +2720,7 @@ function EquityTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedZips.map((z) => (
+                {zipTable.visible.map((z) => (
                   <TableRow key={z.zip}>
                     <TableCell>
                       <ZipLink zip={z.zip} onOpenZip={onOpenZip} className="text-sm" />
@@ -2661,6 +2762,11 @@ function EquityTab({
                 ))}
               </TableBody>
             </Table>
+            <ListExpandBar
+              expanded={zipTable.expanded}
+              onToggle={zipTable.toggle}
+              total={zipTable.total}
+            />
           </CardContent>
         </Card>
       )}
@@ -2732,6 +2838,11 @@ function CountyEquityQueuePanel({ onOpenParcel }: { onOpenParcel: (pin: string) 
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
+  const queueList = useCollapsedList(
+    data?.parcels ?? [],
+    COLLAPSED_ROWS,
+    `${page}-${sort}-${zip}-${neighborhood}-${reappraisal}-${minDeviation}`,
+  );
 
   return (
     <Card className="border-slate-200">
@@ -2845,7 +2956,7 @@ function CountyEquityQueuePanel({ onOpenParcel }: { onOpenParcel: (pin: string) 
                   </TableCell>
                 </TableRow>
               )}
-              {data?.parcels.map((p) => (
+              {queueList.visible.map((p) => (
                 <TableRow key={p.pin}>
                   <TableCell className="max-w-[200px]">
                     <button
@@ -2882,6 +2993,11 @@ function CountyEquityQueuePanel({ onOpenParcel }: { onOpenParcel: (pin: string) 
               ))}
             </TableBody>
           </Table>
+          <ListExpandBar
+            expanded={queueList.expanded}
+            onToggle={queueList.toggle}
+            total={queueList.total}
+          />
         </div>
 
         {totalPages > 1 && (
@@ -2920,6 +3036,7 @@ function OverridesTab() {
 
   const pending = data?.overrides.filter((o) => o.status === "pending") ?? [];
   const resolved = data?.overrides.filter((o) => o.status !== "pending") ?? [];
+  const pendingList = useCollapsedList(pending, COLLAPSED_ROWS);
 
   const act = (id: string, action: "approve" | "reject") => {
     review.mutate(
@@ -2948,7 +3065,7 @@ function OverridesTab() {
         <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No pending overrides.</CardContent></Card>
       )}
 
-      {pending.map((o) => (
+      {pendingList.visible.map((o) => (
         <Card key={o.id} className="border-l-4 border-l-amber-400">
           <CardContent className="pt-4">
             <div className="flex items-start justify-between mb-2">
@@ -2973,6 +3090,14 @@ function OverridesTab() {
           </CardContent>
         </Card>
       ))}
+
+      {pendingList.hasMore && (
+        <ListExpandBar
+          expanded={pendingList.expanded}
+          onToggle={pendingList.toggle}
+          total={pendingList.total}
+        />
+      )}
     </div>
   );
 }
@@ -3027,6 +3152,7 @@ function SubmitOverrideDialog({ onSuccess }: { onSuccess: () => void }) {
 // ════════════════════════════════════════════════════════════════════════
 function AuditTab() {
   const { data, isLoading } = trpc.parceliq.getAudit.useQuery({ limit: 50 });
+  const auditList = useCollapsedList(data?.events ?? [], COLLAPSED_ROWS);
 
   const dotColor: Record<string, string> = {
     override_submitted: "bg-amber-400",
@@ -3046,7 +3172,7 @@ function AuditTab() {
           {!isLoading && !data?.events.length && (
             <p className="text-sm text-muted-foreground py-4">No audit events yet.</p>
           )}
-          {data?.events.map((e: any) => (
+          {auditList.visible.map((e: any) => (
             <div key={e.id} className="flex gap-3 py-3">
               <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${dotColor[e.event_type] ?? "bg-slate-400"}`} />
               <span className="font-mono text-[11px] text-muted-foreground w-20 flex-shrink-0 pt-0.5">
@@ -3058,6 +3184,11 @@ function AuditTab() {
               </div>
             </div>
           ))}
+          <ListExpandBar
+            expanded={auditList.expanded}
+            onToggle={auditList.toggle}
+            total={auditList.total}
+          />
         </CardContent>
       </Card>
     </div>
