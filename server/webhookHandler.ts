@@ -116,10 +116,26 @@ export async function handleReportDownload(req: Request, res: Response): Promise
     return;
   }
 
-  const pdfPath = row.pdf_path != null ? String(row.pdf_path) : "";
-  if (!pdfPath || !fs.existsSync(pdfPath)) {
+  const status = String(row.status);
+  if (status === "pending" || status === "failed") {
     res.status(404).send("PDF not ready yet — check your email shortly.");
     return;
+  }
+
+  let pdfPath = row.pdf_path != null ? String(row.pdf_path) : "";
+
+  if (!pdfPath || !fs.existsSync(pdfPath)) {
+    try {
+      const pin = String(row.pin);
+      console.log(`Regenerating appeal report PDF for ${requestId} (${pin})`);
+      pdfPath = await generateReport(pool, pin, requestId);
+      await updateReportStatus(requestId, "sent", { pdfPath });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("On-demand report regeneration failed:", message);
+      res.status(500).send("Could not generate report — please contact support.");
+      return;
+    }
   }
 
   const filename = `parcelogik-appeal-${String(row.pin).replace(/-/g, "")}.pdf`;
