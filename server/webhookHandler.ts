@@ -12,6 +12,57 @@ import {
 import { generateReport } from "./reportGenerator.js";
 import { appBaseUrl, getStripe } from "./stripeClient.js";
 
+function resendFromAddress(): string {
+  const raw = process.env.RESEND_FROM_EMAIL ?? "Parcelogik <onboarding@resend.dev>";
+  return raw.trim().replace(/^["']|["']$/g, "");
+}
+
+async function sendReportEmail(opts: {
+  email: string;
+  pin: string;
+  address: string;
+  requestId: string;
+  sessionId: string;
+  pdfPath: string;
+}): Promise<boolean> {
+  const resendKey = process.env.RESEND_API_KEY?.trim();
+  if (!resendKey) {
+    console.warn("RESEND_API_KEY not set — skipping appeal report email");
+    return false;
+  }
+
+  const resend = new Resend(resendKey);
+  const downloadUrl = `${appBaseUrl()}/api/reports/${opts.requestId}/download?session_id=${encodeURIComponent(opts.sessionId)}`;
+  const pdfBuffer = fs.readFileSync(opts.pdfPath);
+
+  const { data, error } = await resend.emails.send({
+    from: resendFromAddress(),
+    to: opts.email,
+    subject: `Your Parcelogik Appeal Report — ${opts.address}`,
+    html: `
+      <p>Thank you for your purchase. Your Buncombe County property tax appeal report is attached.</p>
+      <p><a href="${downloadUrl}">Download your PDF report</a></p>
+      <p>Report ID: ${opts.requestId}</p>
+      <p style="color:#64748b;font-size:12px">Parcelogik — analytical research, not a licensed appraisal.</p>
+    `,
+    attachments: [
+      {
+        filename: `parcelogik-appeal-${opts.pin.replace(/-/g, "")}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+
+  if (error) {
+    console.error("Resend email failed:", error);
+    return false;
+  }
+
+  console.log(`Appeal report emailed to ${opts.email} (Resend id: ${data?.id ?? "unknown"})`);
+  return true;
+}
+
 export async function handleStripeWebhook(req: Request, res: Response): Promise<void> {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) {
@@ -63,34 +114,15 @@ async function processPaidSession(session: Stripe.Checkout.Session): Promise<voi
     const pdfPath = await generateReport(pool, pin, requestId);
     await updateReportStatus(requestId, "generated", { pdfPath });
 
-    const downloadUrl = `${appBaseUrl()}/api/reports/${requestId}/download?session_id=${encodeURIComponent(session.id)}`;
-
-    const resendKey = process.env.RESEND_API_KEY;
-    if (resendKey) {
-      const resend = new Resend(resendKey);
-      const from = process.env.RESEND_FROM_EMAIL ?? "Parcelogik <onboarding@resend.dev>";
-      const pdfBuffer = fs.readFileSync(pdfPath);
-
-      await resend.emails.send({
-        from,
-        to: email,
-        subject: "Your Parcelogik Appeal Report",
-        html: `
-          <p>Thank you for your purchase. Your Buncombe County property tax appeal report is ready.</p>
-          <p><a href="${downloadUrl}">Download your PDF report</a></p>
-          <p>Report ID: ${requestId}</p>
-          <p style="color:#64748b;font-size:12px">Parcelogik — analytical research, not a licensed appraisal.</p>
-        `,
-        attachments: [
-          {
-            filename: `parcelogik-appeal-report-${pin.replace(/-/g, "")}.pdf`,
-            content: pdfBuffer,
-          },
-        ],
-      });
-    } else {
-      console.warn("RESEND_API_KEY not set — skipping appeal report email");
-    }
+    const address = row.address != null ? String(row.address) : pin;
+    await sendReportEmail({
+      email,
+      pin,
+      address,
+      requestId,
+      sessionId: session.id,
+      pdfPath,
+    });
 
     await updateReportStatus(requestId, "sent", { pdfPath });
   } catch (err) {
@@ -123,6 +155,7 @@ export async function handleReportDownload(req: Request, res: Response): Promise
   }
 
   let pdfPath = row.pdf_path != null ? String(row.pdf_path) : "";
+  let regenerated = false;
 
   if (!pdfPath || !fs.existsSync(pdfPath)) {
     try {
@@ -130,12 +163,24 @@ export async function handleReportDownload(req: Request, res: Response): Promise
       console.log(`Regenerating appeal report PDF for ${requestId} (${pin})`);
       pdfPath = await generateReport(pool, pin, requestId);
       await updateReportStatus(requestId, "sent", { pdfPath });
+      regenerated = true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("On-demand report regeneration failed:", message);
       res.status(500).send("Could not generate report — please contact support.");
       return;
     }
+  }
+
+  if (regenerated && row.email) {
+    await sendReportEmail({
+      email: String(row.email),
+      pin: String(row.pin),
+      address: row.address != null ? String(row.address) : String(row.pin),
+      requestId,
+      sessionId,
+      pdfPath,
+    });
   }
 
   const filename = `parcelogik-appeal-${String(row.pin).replace(/-/g, "")}.pdf`;

@@ -201,50 +201,41 @@ function reportStyles(): string {
     @page { size: letter; margin: 0; }
     * { box-sizing: border-box; }
     body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; font-size: 10.5pt; line-height: 1.5; margin: 0; }
-    .page { page-break-after: always; position: relative; min-height: 9.5in; }
+    .page { page-break-after: always; }
     .page:last-child { page-break-after: auto; }
-    .cover { border: 2px solid #0f172a; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
-    .cover-top { background: #0f172a; color: #fff; padding: 28px 32px; }
-    .cover-top .brand { font-size: 26pt; font-weight: 700; letter-spacing: -0.03em; font-family: Georgia, serif; }
-    .cover-top .brand span { color: #fbbf24; }
-    .cover-top .tagline { color: #94a3b8; font-size: 9.5pt; margin-top: 8px; }
-    .cover-body { padding: 24px 32px; background: #f8fafc; }
-    .cover-address { font-family: Georgia, serif; font-size: 20pt; font-weight: 600; color: #0f172a; margin: 0 0 4px; }
-    .cover-meta { font-size: 9.5pt; color: #64748b; margin-bottom: 20px; }
-    .section-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 3px solid #fbbf24; }
-    .section-num { background: #0f172a; color: #fbbf24; font-size: 11pt; font-weight: 700; width: 32px; height: 32px; line-height: 32px; text-align: center; border-radius: 4px; flex-shrink: 0; }
-    .section-title { font-family: Georgia, serif; font-size: 16pt; font-weight: 600; color: #0f172a; margin: 0; }
-    h2 { font-size: 12pt; color: #334155; margin: 0 0 12px; font-weight: 600; }
+    .doc-title { font-family: Georgia, serif; font-size: 22pt; font-weight: 700; color: #0f172a; margin: 0 0 6px; }
+    .doc-subtitle { font-size: 10pt; color: #64748b; margin: 0 0 18px; }
+    .property-line { font-family: Georgia, serif; font-size: 16pt; font-weight: 600; margin: 0 0 4px; }
+    .property-meta { font-size: 9.5pt; color: #64748b; margin: 0 0 16px; }
+    h2.section { font-family: Georgia, serif; font-size: 14pt; font-weight: 600; color: #0f172a; margin: 0 0 14px; padding-bottom: 6px; border-bottom: 2px solid #fbbf24; }
     p { margin: 0 0 10px; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-    .stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; }
+    .stat { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 10px 12px; }
     .stat label { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.07em; color: #64748b; font-weight: 600; }
     .stat .val { font-size: 14pt; font-weight: 700; color: #0f172a; margin-top: 3px; line-height: 1.2; }
     .stat .val.sm { font-size: 11pt; font-weight: 600; }
-    .highlight { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; padding: 14px 16px; margin: 14px 0; }
-    .highlight strong { color: #92400e; }
-    .verdict { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 14px; margin: 14px 0; font-size: 10pt; }
+    .highlight { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; padding: 12px 14px; margin: 12px 0; }
+    .verdict { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 14px; margin: 12px 0; font-size: 10pt; }
     table { width: 100%; border-collapse: collapse; font-size: 9pt; margin: 10px 0 14px; }
-    th { background: #0f172a; color: #fff; text-align: left; padding: 7px 9px; font-weight: 600; font-size: 8.5pt; }
+    th { background: #e2e8f0; color: #0f172a; text-align: left; padding: 7px 9px; font-weight: 700; font-size: 8.5pt; border-bottom: 2px solid #94a3b8; }
     td { border-bottom: 1px solid #e2e8f0; padding: 7px 9px; vertical-align: top; }
     tr:nth-child(even) td { background: #f8fafc; }
     .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     ol.steps { padding-left: 18px; margin: 0; }
     ol.steps li { margin-bottom: 9px; }
-    .footer { margin-top: 24px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 8pt; color: #94a3b8; }
+    .footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 8pt; color: #94a3b8; }
     .disclaimer { font-size: 8.5pt; color: #64748b; line-height: 1.45; }
-    .badge { display: inline-block; background: #fbbf24; color: #0f172a; font-size: 7.5pt; font-weight: 700; padding: 2px 7px; border-radius: 3px; letter-spacing: 0.04em; }
-    .arrow-row { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 16px 0; }
-    .arrow-box { text-align: center; flex: 1; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; }
-    .arrow-box .yr { font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
-    .arrow-box .amt { font-size: 18pt; font-weight: 700; color: #0f172a; margin-top: 4px; }
-    .arrow { font-size: 20pt; color: #f59e0b; font-weight: 700; }
+    .badge { display: inline-block; background: #fef3c7; color: #92400e; font-size: 7.5pt; font-weight: 700; padding: 2px 7px; border-radius: 3px; border: 1px solid #fcd34d; }
+    .value-row { display: flex; gap: 12px; margin: 16px 0; }
+    .value-box { flex: 1; text-align: center; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 12px 8px; }
+    .value-box .yr { font-size: 8pt; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+    .value-box .amt { font-size: 16pt; font-weight: 700; color: #0f172a; margin-top: 4px; }
+    .value-box.accent { background: #fffbeb; border-color: #fcd34d; }
   `;
 }
 
-function sectionHead(num: string, title: string): string {
-  return `<div class="section-head"><div class="section-num">${num}</div><h1 class="section-title">${title}</h1></div>`;
+function sectionH2(num: string, title: string): string {
+  return `<h2 class="section">${num}. ${esc(title)}</h2>`;
 }
 
 function pageFooter(page: number, total: number, extra = ""): string {
@@ -310,22 +301,15 @@ export function buildReportHtml(data: ReportData): string {
 </head>
 <body>
   <section class="page">
-    <div class="cover">
-      <div class="cover-top">
-        <div class="brand">Parcel<span>ogik</span></div>
-        <div class="tagline">Buncombe County Property Tax Appeal Evidence · Report ${esc(data.reportId)}</div>
-      </div>
-      <div class="cover-body">
-        <p class="cover-address">${esc(data.address)}</p>
-        <p class="cover-meta">PIN ${esc(data.pin)} · ${esc(data.zip)} ${esc(data.zipName)} · Generated ${esc(data.generatedAt)}</p>
-        <p style="margin-bottom:16px"><span class="badge">CONFIDENTIAL</span> <span style="font-size:9pt;color:#64748b">Prepared for property owner review — not a licensed appraisal.</span></p>
-        <div class="arrow-row">
-          <div class="arrow-box"><div class="yr">2021 assessed</div><div class="amt">${money(data.value2021)}</div></div>
-          <div class="arrow">→</div>
-          <div class="arrow-box"><div class="yr">2026 assessed</div><div class="amt">${money(data.value2026)}</div></div>
-          <div class="arrow-box" style="border-color:#fcd34d;background:#fffbeb"><div class="yr">Change</div><div class="amt" style="color:#b45309">${pct(data.changePct)}</div></div>
-        </div>
-      </div>
+    <h1 class="doc-title">Parcelogik Appeal Report</h1>
+    <p class="doc-subtitle">Buncombe County Property Tax Appeal Evidence · Report ${esc(data.reportId)} · ${esc(data.generatedAt)}</p>
+    <p class="property-line">${esc(data.address)}</p>
+    <p class="property-meta">PIN ${esc(data.pin)} · ${esc(data.zip)} ${esc(data.zipName)}</p>
+    <p style="margin-bottom:14px"><span class="badge">CONFIDENTIAL</span> <span style="font-size:9pt;color:#64748b">Not a licensed appraisal.</span></p>
+    <div class="value-row">
+      <div class="value-box"><div class="yr">2021 assessed</div><div class="amt">${money(data.value2021)}</div></div>
+      <div class="value-box"><div class="yr">2026 assessed</div><div class="amt">${money(data.value2026)}</div></div>
+      <div class="value-box accent"><div class="yr">Change</div><div class="amt">${pct(data.changePct)}</div></div>
     </div>
     <div class="grid-2">
       <div class="stat"><label>Owner of record</label><div class="val sm">${esc(data.owner)}</div></div>
@@ -339,7 +323,7 @@ export function buildReportHtml(data: ReportData): string {
   </section>
 
   <section class="page">
-    ${sectionHead("2", "Comparable Sales")}
+    ${sectionH2("2", "Comparable Sales")}
     <p>Eight recent qualified Register of Deeds sales in ZIP ${esc(data.zip)}. Use these to show whether your assessment aligns with real market transactions.</p>
     ${data.medianCompSale ? `<p><strong>Median sale price in table:</strong> ${money(data.medianCompSale)} · <strong>Your 2026 assessment:</strong> ${money(data.value2026)}</p>` : ""}
     <table>
@@ -351,7 +335,7 @@ export function buildReportHtml(data: ReportData): string {
   </section>
 
   <section class="page">
-    ${sectionHead("3", "ZIP Equity Analysis")}
+    ${sectionH2("3", "ZIP Equity Analysis")}
     <div class="grid-2">
       <div class="stat"><label>ZIP median assessment-to-sale ratio</label><div class="val">${data.zipMedianRatio != null ? `${(data.zipMedianRatio * 100).toFixed(1)}%` : "—"}</div></div>
       <div class="stat"><label>Sales in ZIP equity sample</label><div class="val">${data.zipSampleCount ?? "—"}</div></div>
@@ -364,7 +348,7 @@ export function buildReportHtml(data: ReportData): string {
   </section>
 
   <section class="page">
-    ${sectionHead("4", "Market Trend Context")}
+    ${sectionH2("4", "Market Trend Context")}
     <p>Asheville metro home values (Zillow Home Value Index) rose approximately <strong>+${appPct}%</strong> since ${esc(data.zillowBaseDate ?? "Jan 2021")} per Zillow Research data in Parcelogik.</p>
     <div class="grid-2">
       <div class="stat"><label>Ratio-implied base value</label><div class="val">${money(data.impliedFairValue)}</div></div>
@@ -377,7 +361,7 @@ export function buildReportHtml(data: ReportData): string {
   </section>
 
   <section class="page">
-    ${sectionHead("5", "How to Appeal in Buncombe County")}
+    ${sectionH2("5", "How to Appeal in Buncombe County")}
     <ol class="steps">
       <li><strong>Review your Notice of Value</strong> — Confirm the 2026 assessed value and deadline on your county notice.</li>
       <li><strong>Gather evidence</strong> — Attach this report, comparable sales, photos, and any recent appraisal or listing data.</li>
@@ -390,7 +374,7 @@ export function buildReportHtml(data: ReportData): string {
   </section>
 
   <section class="page">
-    ${sectionHead("6", "Data Sources &amp; Disclaimer")}
+    ${sectionH2("6", "Data Sources &amp; Disclaimer")}
     <table>
       <thead><tr><th>Source</th><th>Use in this report</th></tr></thead>
       <tbody>
