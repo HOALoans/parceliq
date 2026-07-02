@@ -1,6 +1,4 @@
-/**
- * Parcelogik.com — Assessment Dashboard
- */
+import AppealReport from "./AppealReport";
 
 import { useState, useRef, useEffect } from "react";
 import { trpc } from "../../lib/trpc";           // adjust path to match your trpc client
@@ -878,6 +876,18 @@ export default function ParcelogikPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [zipSample, setZipSample] = useState<string | null>(null);
   const [explorerPin, setExplorerPin] = useState<string | null>(null);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const pin = params.get("pin");
+    const sessionId = params.get("session_id");
+    if (pin) {
+      setExplorerPin(pin);
+      setTab("explorer");
+    }
+    if (sessionId) setCheckoutSessionId(sessionId);
+  }, []);
 
   const openZipSample = (zip: string) => {
     setExplorerPin(null);
@@ -950,6 +960,7 @@ export default function ParcelogikPage() {
             onClearZipSample={clearZipSample}
             explorerPin={explorerPin}
             onClearExplorerPin={clearExplorerPin}
+            checkoutSessionId={checkoutSessionId}
           />
         )}
         {tab === "revenue"    && <RevenueTab />}
@@ -1534,7 +1545,11 @@ function ZipEquitySampleView({ zip, onBack }: { zip: string; onBack: () => void 
               </Button>
             </CardHeader>
             <CardContent className="px-4 pb-6">
-              <ParcelDetailFetcher key={detailPin} pin={detailPin} />
+              <ParcelDetailFetcher
+                key={detailPin}
+                pin={detailPin}
+                checkoutSessionId={checkoutSessionId}
+              />
             </CardContent>
           </Card>
         </div>
@@ -1551,11 +1566,13 @@ function ExplorerTab({
   onClearZipSample,
   explorerPin,
   onClearExplorerPin,
+  checkoutSessionId,
 }: {
   zipSample: string | null;
   onClearZipSample: () => void;
   explorerPin: string | null;
   onClearExplorerPin: () => void;
+  checkoutSessionId?: string | null;
 }) {
   if (zipSample) {
     return <ZipEquitySampleView zip={zipSample} onBack={onClearZipSample} />;
@@ -1565,6 +1582,7 @@ function ExplorerTab({
     <ExplorerSearchView
       initialPin={explorerPin}
       onConsumedInitialPin={onClearExplorerPin}
+      checkoutSessionId={checkoutSessionId}
     />
   );
 }
@@ -1572,9 +1590,11 @@ function ExplorerTab({
 function ExplorerSearchView({
   initialPin,
   onConsumedInitialPin,
+  checkoutSessionId,
 }: {
   initialPin?: string | null;
   onConsumedInitialPin?: () => void;
+  checkoutSessionId?: string | null;
 }) {
   const [q, setQ]         = useState("");
   const [classCd, setCls] = useState<string>("");
@@ -1739,7 +1759,13 @@ function ExplorerSearchView({
   );
 }
 
-function ParcelDetailFetcher({ pin }: { pin: string }) {
+function ParcelDetailFetcher({
+  pin,
+  checkoutSessionId,
+}: {
+  pin: string;
+  checkoutSessionId?: string | null;
+}) {
   const { data, isLoading, isError, error, isFetching } =
     trpc.parceliq.getParcel.useQuery(
       { pin },
@@ -1778,7 +1804,10 @@ function ParcelDetailFetcher({ pin }: { pin: string }) {
           Refreshing county record…
         </p>
       )}
-      <ParcelDetailBody data={data as Record<string, any>} />
+      <ParcelDetailBody
+        data={data as Record<string, any>}
+        checkoutSessionId={checkoutSessionId}
+      />
     </div>
   );
 }
@@ -1986,7 +2015,13 @@ function ThenVsNowPanel({
   );
 }
 
-function ParcelDetailBody({ data }: { data: Record<string, any> }) {
+function ParcelDetailBody({
+  data,
+  checkoutSessionId,
+}: {
+  data: Record<string, any>;
+  checkoutSessionId?: string | null;
+}) {
   const v = data.valuation as Record<string, any> | undefined;
   const freshness = data.data_freshness as Record<string, any> | undefined;
   const prc = (v?.prc ?? data.prc) as Record<string, any> | undefined;
@@ -2012,6 +2047,14 @@ function ParcelDetailBody({ data }: { data: Record<string, any> }) {
   return (
     <div className="space-y-5">
       {reappraisalYoY && <ThenVsNowPanel address={address} yoy={reappraisalYoY} />}
+
+      <AppealReport
+        pin={String(data.PIN)}
+        address={address}
+        reappraisalYoY={reappraisalYoY}
+        compCount={v?.nearby_comps?.length}
+        checkoutSessionId={checkoutSessionId}
+      />
 
       {(assessed != null || fairValue != null) && (
         <div className="grid sm:grid-cols-2 gap-3">

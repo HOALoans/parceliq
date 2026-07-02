@@ -7,6 +7,7 @@ import * as trpcExpress from "@trpc/server/adapters/express";
 import { createContext } from "./context.js";
 import { appRouter } from "../routers.js";
 import { ensureTables } from "../db.js";
+import { handleReportDownload, handleStripeWebhook } from "../webhookHandler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -16,12 +17,26 @@ export type { AppRouter } from "../routers.js";
 
 const app = express();
 
+// Stripe webhook — must use raw body (before express.json)
+app.post(
+  "/webhook/stripe",
+  express.raw({ type: "application/json" }),
+  (req, res) => {
+    void handleStripeWebhook(req, res);
+  },
+);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Health check
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", service: "Parcelogik", ts: new Date().toISOString() });
+});
+
+// Appeal report PDF download
+app.get("/api/reports/:requestId/download", (req, res) => {
+  void handleReportDownload(req, res);
 });
 
 // tRPC
